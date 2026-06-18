@@ -1,0 +1,17 @@
+{
+  "name": "giasu-kntech-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "main": "packages/mobile/index.js",
+  "workspaces": [
+    "packages/backend",
+    "packages/web",
+    "packages/shared",
+    "packages/mobile"
+  ],
+  "scripts": {
+    "backend": "npm run --prefix packages/backend dev",
+    "web": "npm run --prefix packages/web dev",
+    "mobile": "npm run --prefix packages/mobile start"
+  }
+}

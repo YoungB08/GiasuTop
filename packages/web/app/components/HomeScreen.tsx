@@ -1,0 +1,5573 @@
+"use client";
+
+import { useMemo, useState, useEffect, useRef } from "react";
+import AuthModal from "./AuthModal";
+import { IconSearch, IconBell, IconWallet, IconHome, IconBriefcase, IconTag, IconUser, IconGraduationCap, IconNewspaper, IconChevronRight, IconUpload, IconDownload, IconBook, IconZap, IconStar } from "./icons";
+import { CustomAlert, AlertCustomizer } from "./CustomAlert";
+import MessengerChat from "./MessengerChat";
+import RichTextEditor from "./RichTextEditor";
+
+import HomeTab from "./tabs/HomeTab";
+import CoursesTab from "./tabs/CoursesTab";
+import DocumentsTab from "./tabs/DocumentsTab";
+import NewsTab from "./tabs/NewsTab";
+import MyCoursesTab from "./tabs/MyCoursesTab";
+import BookingsTab from "./tabs/BookingsTab";
+import WalletTab from "./tabs/WalletTab";
+import AdminTab from "./tabs/AdminTab";
+import ProfileTab from "./tabs/ProfileTab";
+
+import BookingModal from "./modals/BookingModal";
+import PaymentModal from "./modals/PaymentModal";
+import ClassroomView from "./modals/ClassroomView";
+import UploadDocModal from "./modals/UploadDocModal";
+import RejectTutorModal from "./modals/RejectTutorModal";
+import AdminEditUserModal from "./modals/AdminEditUserModal";
+import TutorDetailModal from "./modals/TutorDetailModal";
+import DocDetailModal from "./modals/DocDetailModal";
+import TutorProfileModal from "./modals/TutorProfileModal";
+import NewsModal from "./modals/NewsModal";
+
+type TabKey = "home" | "courses" | "my_courses" | "documents" | "news" | "bookings" | "wallet" | "profile" | "admin";
+
+type Tutor = {
+  user_id: string;
+  full_name: string;
+  email: string;
+  avatar_url: string | null;
+  bio: string | null;
+  school: string | null;
+  major: string | null;
+  year_of_study: string | null;
+  hourly_rate: string;
+  subjects_to_teach: string[];
+  is_verified?: string;
+  documents?: any[];
+  card_gradient?: string;
+};
+
+type Appointment = {
+  id: string;
+  student_id: string;
+  tutor_id: string;
+  start_time: string;
+  end_time: string;
+  price_paid: string;
+  status: "PENDING" | "CONFIRMED" | "CANCELLED" | "DONE";
+  payment_status: "UNPAID" | "HOLDING" | "RELEASED" | "REFUNDED" | "FAILED";
+  live_room_code: string | null;
+  live_room_url: string | null;
+  tutor_name?: string;
+  student_name?: string;
+};
+
+type PaymentDetails = {
+  paymentId: number;
+  appointmentId: string;
+  amount: number;
+  description: string;
+  qrUrl: string;
+  accountName: string | null;
+  bankCode: string;
+  accountNumber: string;
+};
+
+type Subject = {
+  id: number;
+  name: string;
+  created_at: string;
+};
+
+type SystemUser = {
+  id: string;
+  full_name: string;
+  email: string;
+  role: "STUDENT" | "TUTOR" | "ADMIN";
+  phone: string | null;
+  avatar_url: string | null;
+  status: "ACTIVE" | "BANNED";
+  created_at: string;
+};
+
+type SystemLog = {
+  id: number;
+  user_id: string | null;
+  action: string;
+  details: string | null;
+  ip: string | null;
+  created_at: string;
+};
+
+type SystemStats = {
+  memory: {
+    total: string;
+    used: string;
+    percentage: string;
+  };
+  cpu: {
+    loadAvg: string;
+    cores: number;
+  };
+  stats: {
+    users: number;
+    tutors: number;
+    appointments: number;
+  };
+};
+
+type NewsItem = {
+  id: number;
+  title: string;
+  summary: string | null;
+  content: string;
+  thumbnail_url: string | null;
+  category: string;
+  created_at: string;
+};
+
+type DocumentItem = {
+  id: number;
+  title: string;
+  file_url: string;
+  grade_tag: string;
+  type_tag: string;
+  subject_tag: string;
+  uploader_id: string;
+  uploader_name: string;
+  is_approved: "PENDING" | "APPROVED" | "REJECTED";
+  download_count: number;
+  created_at: string;
+};
+
+type CommunityPost = {
+  id: number;
+  author: string;
+  avatarSeed: string;
+  content: string;
+  timeAgo: string;
+  likes: number;
+  likedByMe: boolean;
+  comments: { author: string; text: string }[];
+};
+
+// ===== MOCK DATA (fallback khi API rỗng) =====
+const MOCK_TUTORS: Tutor[] = [
+  { user_id: "m1", full_name: "Nguyễn Minh Khoa", email: "khoa@gmail.com", avatar_url: null, bio: "Sinh viên năm 4 ĐH Bách Khoa, 3 năm kinh nghiệm dạy kèm Toán và Lý. Phương pháp từ cơ bản đến nâng cao, kết quả thực tế.", school: "ĐH Bách Khoa HN", major: "Kỹ thuật Điện", year_of_study: "Sinh viên năm 4", hourly_rate: "180000", subjects_to_teach: ["Toán", "Lý"] },
+  { user_id: "m2", full_name: "Trần Thị Thu Hương", email: "huong@gmail.com", avatar_url: null, bio: "GV Ngữ Văn 8 năm kinh nghiệm, chuyên luyện thi ĐH khối C/D. Tỷ lệ đỗ đại học cao.", school: "THPT Chu Văn An", major: "Sư Phạm Văn", year_of_study: "Đã tốt nghiệp", hourly_rate: "200000", subjects_to_teach: ["Văn", "Tiếng Anh"] },
+  { user_id: "m3", full_name: "Lê Văn Đức", email: "duc@gmail.com", avatar_url: null, bio: "Thạc sĩ Hóa học ĐH KHTN, chuyên Hóa hữu cơ và vô cơ lớp 10-12, luyện thi THPT QG.", school: "ĐH KHTN HN", major: "Hóa học", year_of_study: "Thạc sĩ", hourly_rate: "250000", subjects_to_teach: ["Hóa", "Lý"] },
+  { user_id: "m4", full_name: "Phạm Thị Lan Anh", email: "lananh@gmail.com", avatar_url: null, bio: "GV Tiếng Anh, IELTS 8.0, dạy giao tiếp và luyện thi IELTS/TOEIC hiệu quả.", school: "ĐH Ngoại Ngữ ĐHQG", major: "Tiếng Anh", year_of_study: "Đã tốt nghiệp", hourly_rate: "220000", subjects_to_teach: ["Tiếng Anh"] },
+  { user_id: "m5", full_name: "Vũ Hoàng Nam", email: "nam@gmail.com", avatar_url: null, bio: "Sinh viên xuất sắc ĐH Sư Phạm, chuyên dạy Toán THCS và Tiểu học. Kiên nhẫn, tận tâm.", school: "ĐH Sư Phạm HN", major: "Sư Phạm Toán", year_of_study: "Sinh viên năm 3", hourly_rate: "150000", subjects_to_teach: ["Toán"] },
+  { user_id: "m6", full_name: "Ngô Thị Bích Ngân", email: "ngan@gmail.com", avatar_url: null, bio: "Cử nhân Sinh học, chuyên dạy Sinh học 10-12, ôn thi ĐH khối B.", school: "ĐH KHTN HN", major: "Sinh học", year_of_study: "Đã tốt nghiệp", hourly_rate: "160000", subjects_to_teach: ["Sinh học", "Hóa"] },
+  { user_id: "m7", full_name: "Đinh Quang Huy", email: "huy@gmail.com", avatar_url: null, bio: "Kỹ sư CNTT ĐH FPT, dạy Tin học, Python/JS cho học sinh THPT. Dạy vui và thực tế.", school: "ĐH FPT", major: "CNTT", year_of_study: "Đã tốt nghiệp", hourly_rate: "200000", subjects_to_teach: ["Tin học", "Toán"] },
+  { user_id: "m8", full_name: "Hoàng Minh Tú", email: "tu@gmail.com", avatar_url: null, bio: "Cựu HS giỏi Toán tỉnh, 2 năm kinh nghiệm dạy Toán và Tiếng Anh cấp Tiểu học.", school: "ĐH Kinh tế QD", major: "Kinh tế", year_of_study: "Sinh viên năm 3", hourly_rate: "130000", subjects_to_teach: ["Toán", "Tiếng Anh"] },
+  { user_id: "m9", full_name: "Lương Thị Yến Nhi", email: "nhi@gmail.com", avatar_url: null, bio: "HS giỏi Văn cấp TP, dạy Ngữ văn và Lịch sử cấp THCS, THPT.", school: "ĐH SP TP.HCM", major: "Sư Phạm Văn", year_of_study: "Sinh viên năm 2", hourly_rate: "120000", subjects_to_teach: ["Văn"] },
+  { user_id: "m10", full_name: "Trương Gia Bảo", email: "bao@gmail.com", avatar_url: null, bio: "Thạc sĩ Vật lý, từng dạy trường chuyên. Chuyên ôn thi THPT QG và ĐH khối A.", school: "ĐH KHTN TP.HCM", major: "Vật lý", year_of_study: "Thạc sĩ", hourly_rate: "280000", subjects_to_teach: ["Lý", "Toán"] },
+];
+
+const MOCK_NEWS: NewsItem[] = [
+  { id: 101, title: "Bộ GD-ĐT công bố định dạng đề thi tốt nghiệp THPT 2026", summary: "Năm 2026, đề thi có nhiều thay đổi quan trọng về cấu trúc.", content: "Bộ GD-ĐT vừa công bố định dạng đề thi mới...", thumbnail_url: "https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?w=300&q=80", category: "Thông báo", created_at: "2026-06-10T08:00:00Z" },
+  { id: 102, title: "Mẹo ôn thi Toán hiệu quả trong 30 ngày cuối", summary: "Bí quyết từ các thầy cô để chinh phục Toán đạt điểm cao.", content: "Với 30 ngày còn lại...", thumbnail_url: "https://images.unsplash.com/photo-1509228627152-72ae9ae6848d?w=300&q=80", category: "Toán", created_at: "2026-06-09T10:00:00Z" },
+  { id: 103, title: "Học Tiếng Anh theo phương pháp mới: Hiệu quả hơn 3 lần", summary: "Học theo context giúp nhớ nhanh và lâu hơn.", content: "Nghiên cứu mới nhất...", thumbnail_url: "https://images.unsplash.com/photo-1546410531-bb4caa6b424d?w=300&q=80", category: "Tiếng Anh", created_at: "2026-06-08T09:00:00Z" },
+  { id: 104, title: "Top 10 trường đại học tốt nhất Việt Nam 2026", summary: "Bảng xếp hạng các trường theo tiêu chí chất lượng đào tạo.", content: "Danh sách top 10...", thumbnail_url: "https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=300&q=80", category: "Đại học", created_at: "2026-06-07T08:30:00Z" },
+  { id: 105, title: "Hóa học hữu cơ - Những lưu ý quan trọng khi ôn thi", summary: "Tổng hợp các điểm cần nhớ thường xuất hiện trong đề thi.", content: "Phần Hóa hữu cơ chiếm 60%...", thumbnail_url: "https://images.unsplash.com/photo-1532187643603-ba119ca4109e?w=300&q=80", category: "Hóa", created_at: "2026-06-06T07:00:00Z" },
+  { id: 106, title: "Gia sư trực tuyến vs gia sư tại nhà: Chọn nào?", summary: "Phân tích ưu nhược điểm của hai hình thức học kèm.", content: "Học trực tuyến ngày càng phổ biến...", thumbnail_url: "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=300&q=80", category: "Tư vấn", created_at: "2026-06-05T11:00:00Z" },
+  { id: 107, title: "Vật lý - Công thức cần nhớ trước kỳ thi THPT 2026", summary: "Tổng hợp đầy đủ các công thức Vật lý cần thiết.", content: "Đây là bộ công thức Vật lý quan trọng...", thumbnail_url: "https://images.unsplash.com/photo-1635070041078-e363dbe005cb?w=300&q=80", category: "Lý", created_at: "2026-06-04T08:00:00Z" },
+  { id: 108, title: "Lộ trình học IELTS từ 0 lên 7.0 trong 6 tháng", summary: "Kế hoạch chi tiết để đạt band 7.0 IELTS.", content: "Với lộ trình đúng đắn...", thumbnail_url: "https://images.unsplash.com/photo-1434030216411-0b793f4b4173?w=300&q=80", category: "Tiếng Anh", created_at: "2026-06-03T09:30:00Z" },
+  { id: 109, title: "Sinh học tế bào - Tổng ôn kiến thức trọng tâm", summary: "Kiến thức Sinh học tế bào thường xuất hiện trong đề thi.", content: "Sinh học tế bào là căn bản...", thumbnail_url: "https://images.unsplash.com/photo-1576086213369-97a306d36557?w=300&q=80", category: "Sinh học", created_at: "2026-06-02T10:00:00Z" },
+  { id: 110, title: "5 sai lầm phổ biến khi học Ngữ Văn và cách khắc phục", summary: "Những lỗi thường gặp trong bài văn và cách cải thiện.", content: "Nhiều học sinh mắc các sai lầm...", thumbnail_url: "https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=300&q=80", category: "Văn", created_at: "2026-06-01T08:00:00Z" },
+];
+
+const MOCK_DOCUMENTS: DocumentItem[] = [
+  { id: 101, title: "Đề thi thử Toán THPT QG 2026 - Đề số 1", file_url: "#", grade_tag: "Lớp 12", type_tag: "Tài liệu ôn thi", subject_tag: "Toán", uploader_id: "admin", uploader_name: "Admin GiasuTop", is_approved: "APPROVED", download_count: 247, created_at: "2026-06-01T00:00:00Z" },
+  { id: 102, title: "Chuyên đề Hóa Hữu cơ ôn thi THPT 2026", file_url: "#", grade_tag: "Lớp 12", type_tag: "Tài liệu", subject_tag: "Hóa", uploader_id: "m3", uploader_name: "GS. Lê Văn Đức", is_approved: "APPROVED", download_count: 189, created_at: "2026-05-30T00:00:00Z" },
+  { id: 103, title: "Đề kiểm tra giữa kỳ 1 Vật Lý lớp 11", file_url: "#", grade_tag: "Lớp 11", type_tag: "Giữa kì 1", subject_tag: "Lý", uploader_id: "m10", uploader_name: "Thầy Trương Gia Bảo", is_approved: "APPROVED", download_count: 134, created_at: "2026-05-28T00:00:00Z" },
+  { id: 104, title: "100 câu trắc nghiệm Tiếng Anh có đáp án chi tiết", file_url: "#", grade_tag: "Lớp 12", type_tag: "Ôn tập", subject_tag: "Tiếng Anh", uploader_id: "m4", uploader_name: "Cô Phạm Lan Anh", is_approved: "APPROVED", download_count: 312, created_at: "2026-05-25T00:00:00Z" },
+  { id: 105, title: "Bộ đề Ngữ Văn ôn thi học kỳ 2 lớp 10", file_url: "#", grade_tag: "Lớp 10", type_tag: "Cuối kì 2", subject_tag: "Văn", uploader_id: "m2", uploader_name: "Cô Thu Hương", is_approved: "APPROVED", download_count: 98, created_at: "2026-05-22T00:00:00Z" },
+  { id: 106, title: "Đề thi cuối kỳ 2 Sinh Học lớp 12 - 5 năm", file_url: "#", grade_tag: "Lớp 12", type_tag: "Cuối kì 2", subject_tag: "Sinh học", uploader_id: "m6", uploader_name: "GS. Ngô Bích Ngân", is_approved: "APPROVED", download_count: 156, created_at: "2026-05-20T00:00:00Z" },
+  { id: 107, title: "Toán đại số lớp 9 - Ôn thi vào 10", file_url: "#", grade_tag: "Lớp 9", type_tag: "Tài liệu", subject_tag: "Toán", uploader_id: "m5", uploader_name: "Thầy Vũ Hoàng Nam", is_approved: "APPROVED", download_count: 201, created_at: "2026-05-18T00:00:00Z" },
+  { id: 108, title: "Sách bài tập Hóa học 11 có lời giải chi tiết", file_url: "#", grade_tag: "Lớp 11", type_tag: "Sách", subject_tag: "Hóa", uploader_id: "admin", uploader_name: "Admin GiasuTop", is_approved: "APPROVED", download_count: 178, created_at: "2026-05-15T00:00:00Z" },
+  { id: 109, title: "Đề thi thử Vật Lý các trường THPT Hà Nội", file_url: "#", grade_tag: "Lớp 12", type_tag: "Tài liệu ôn thi", subject_tag: "Lý", uploader_id: "m1", uploader_name: "Thầy Nguyễn Minh Khoa", is_approved: "APPROVED", download_count: 267, created_at: "2026-05-12T00:00:00Z" },
+  { id: 110, title: "Grammar & Vocabulary IELTS 6.5 - Tổng hợp", file_url: "#", grade_tag: "Lớp 12", type_tag: "Tài liệu", subject_tag: "Tiếng Anh", uploader_id: "m4", uploader_name: "Cô Phạm Lan Anh", is_approved: "APPROVED", download_count: 389, created_at: "2026-05-10T00:00:00Z" },
+];
+
+const MOCK_COMMUNITY_POSTS: CommunityPost[] = [
+  { id: 1, author: "Phụ huynh Nguyễn Văn Minh", avatarSeed: "parent1", content: "Con tôi đang học lớp 11, yếu Toán. Ai có thể recommend gia sư Toán giỏi ở HN không ạ? Cần buổi tối và cuối tuần 🙏", timeAgo: "2 giờ trước", likes: 14, likedByMe: false, comments: [{ author: "GS Minh Khoa", text: "Bác xem hồ sơ của cháu nhé! Cháu dạy Toán lớp 10-12." }, { author: "Admin GiasuTop", text: "Bác vào tab 'Tìm gia sư' để lọc theo lớp và môn học ạ!" }] },
+  { id: 2, author: "Gia sư Thu Hương", avatarSeed: "tutor2", content: "Học sinh thường sợ Văn vì không biết viết. Bí quyết là đọc nhiều và ghi chép ý hay. Bác nên khuyến khích con đọc sách mỗi ngày 📚", timeAgo: "4 giờ trước", likes: 32, likedByMe: false, comments: [{ author: "Phụ huynh Hoa", text: "Cảm ơn cô chia sẻ! Con em cũng yếu văn lắm." }] },
+  { id: 3, author: "Học sinh Trần Bảo Châu", avatarSeed: "student3", content: "Ai biết phương pháp học Hóa hữu cơ hiệu quả không ạ? Em cứ học xong lại quên, nhất là phản ứng Ankin và Anken 😢", timeAgo: "5 giờ trước", likes: 8, likedByMe: false, comments: [{ author: "GS Lê Văn Đức", text: "Em học theo sơ đồ tư duy và so sánh cấu trúc nhé!" }] },
+  { id: 4, author: "Phụ huynh Lê Thị Hạnh", avatarSeed: "parent4", content: "Đã dùngGiasuTop3 tuần, con học với cô Lan Anh rất tiến bộ. Điểm Tiếng Anh từ 5 lên 7.5 rồi 🎉 Rất recommend platform này!", timeAgo: "8 giờ trước", likes: 47, likedByMe: false, comments: [{ author: "Admin GiasuTop", text: "Cảm ơn bác đã tin tưởng GiasuTop! 🌟" }] },
+  { id: 5, author: "GS Vũ Hoàng Nam", avatarSeed: "tutor5", content: "Còn 2 slot trống buổi tối T3, T5, T7. Dạy Toán THCS và Tiểu học. 150k/giờ. Phương pháp kiên nhẫn, bám sát sức học. DM nếu cần 🙋", timeAgo: "1 ngày trước", likes: 21, likedByMe: false, comments: [{ author: "PH Tuấn", text: "Thầy có dạy lớp 7 không ạ?" }] },
+  { id: 6, author: "HS Đỗ Quốc Hùng", avatarSeed: "student6", content: "Hỏi thật: học online có tốt bằng offline không? Em đang phân vân cho kỳ ôn thi ĐH 🤔", timeAgo: "1 ngày trước", likes: 15, likedByMe: false, comments: [{ author: "GS Minh Khoa", text: "Tùy vào kỷ luật của em nhé! Online tiện hơn nhưng cần tự giác cao." }] },
+  { id: 7, author: "Admin GiasuTop", avatarSeed: "admin7", content: "📢 Tính năng MỚI: Phòng học trực tuyến với bảng vẽ tương tác! Gia sư và học sinh cùng giải bài toán trực tiếp. Thử ngay! ✨", timeAgo: "2 ngày trước", likes: 56, likedByMe: false, comments: [{ author: "GS Lan Anh", text: "Cháu đang dùng với học sinh, rất tiện!" }] },
+  { id: 8, author: "PH Trần Văn Phúc", avatarSeed: "parent8", content: "Con học THPT cần ôn khối A (Toán-Lý-Hóa). Ai giới thiệu gia sư được không ạ?", timeAgo: "2 ngày trước", likes: 9, likedByMe: false, comments: [{ author: "GS Lê Văn Đức", text: "Cháu dạy Lý và Hóa, còn Toán cháu giới thiệu bạn nhé!" }] },
+  { id: 9, author: "GS Lê Văn Đức", avatarSeed: "tutor9", content: "TIP HỌC HÓA: Đừng học thuộc phản ứng. Hãy hiểu cấu trúc phân tử, từ đó suy ra phản ứng → giải được bài mới! 🧪", timeAgo: "3 ngày trước", likes: 38, likedByMe: false, comments: [{ author: "HS Châu", text: "Em sẽ thử cách này! Cảm ơn thầy!" }] },
+  { id: 10, author: "HS Nguyễn Ngọc Linh", avatarSeed: "student10", content: "Chia sẻ lịch học: Sáng đọc lý thuyết 45', chiều làm bài 1h, tối ôn 30'. Mình cải thiện từ 6.5 → 8.0 sau 2 tháng! 💪", timeAgo: "3 ngày trước", likes: 29, likedByMe: false, comments: [{ author: "PH Hạnh", text: "Cảm ơn bạn! Cho con học theo lịch này!" }] },
+];
+
+const formatBackendError = (json: any): string => {
+  if (json && json.issues && Array.isArray(json.issues)) {
+    return json.issues.map((i: any) => {
+      const field = i.path.join(".");
+      const fieldMap: Record<string, string> = {
+        email: "Email",
+        password: "Mật khẩu",
+        fullName: "Họ và tên",
+        role: "Vai trò",
+        bio: "Giới thiệu bản thân",
+        school: "Trường đào tạo",
+        major: "Chuyên ngành",
+        yearOfStudy: "Trình độ/Năm học",
+        hourlyRate: "Học phí đề xuất",
+        subjectsToTeach: "Môn học giảng dạy",
+        cardGradient: "Màu sắc thẻ",
+        commissionPercent: "Chiết khấu hoa hồng",
+        title: "Tiêu đề tài liệu",
+        file: "Tệp tài liệu",
+        subjectTag: "Môn học",
+        gradeTag: "Khối lớp",
+        typeTag: "Phân loại",
+        phone: "Số điện thoại",
+        password_hash: "Mật khẩu",
+        status: "Trạng thái",
+      };
+      const fieldName = fieldMap[field] || field;
+      let errorMsg = i.message;
+      if (errorMsg === "Required") {
+        errorMsg = "không được để trống.";
+      } else if (errorMsg.includes("at least")) {
+        const match = errorMsg.match(/at least (\d+)/);
+        const minLen = match ? match[1] : "2";
+        errorMsg = `phải dài ít nhất ${minLen} ký tự.`;
+      } else if (errorMsg.includes("Invalid email")) {
+        errorMsg = "không đúng định dạng (ví dụ: ten@giasu.vn).";
+      } else if (errorMsg.includes("Number must be")) {
+        errorMsg = errorMsg.replace("Number must be", "Số phải");
+      }
+      return `• ${fieldName}: ${errorMsg}`;
+    }).join("\n");
+  }
+  return json?.message || "Đã xảy ra lỗi. Vui lòng kiểm tra lại.";
+};
+
+export default function HomeScreen() {
+  // Authentication states
+  const [token, setToken] = useState<string | null>(null);
+  const [user, setUser] = useState<{ id: string; email: string; fullName: string; role: string } | null>(null);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authModalConfig, setAuthModalConfig] = useState<{ tab: "login" | "register"; role: "STUDENT" | "TUTOR" }>({
+    tab: "login",
+    role: "STUDENT",
+  });
+  const [tutorProfileModalOpen, setTutorProfileModalOpen] = useState(false);
+
+  // Custom Alert states
+  const [customAlertOpen, setCustomAlertOpen] = useState(false);
+  const [customAlertType, setCustomAlertType] = useState<"success" | "warning" | "error" | "info">("success");
+  const [customAlertTitle, setCustomAlertTitle] = useState("");
+  const [customAlertMessage, setCustomAlertMessage] = useState("");
+  const [customAlertImg, setCustomAlertImg] = useState<string | undefined>(undefined);
+
+  // Banned state
+  const [isBanned, setIsBanned] = useState(false);
+  const [showInstallPrompt, setShowInstallPrompt] = useState(false);
+
+  // Long term scheduling states
+  const [tutorBookingType, setTutorBookingType] = useState<"SINGLE" | "LONG_TERM">("SINGLE");
+  const [longTermSchedule, setLongTermSchedule] = useState<{ week1: string[]; week2: string[] }>({
+    week1: ["Thứ 2", "Thứ 5", "Thứ 6"],
+    week2: ["Thứ 3", "Thứ 7", "Chủ nhật"],
+  });
+  const [longTermWeeks, setLongTermWeeks] = useState<number>(4);
+
+  // Client-side file objects for uploading
+  const [cccdFrontFile, setCccdFrontFile] = useState<File | null>(null);
+  const [cccdBackFile, setCccdBackFile] = useState<File | null>(null);
+  const [portraitFile, setPortraitFile] = useState<File | null>(null);
+  const [certificatesFiles, setCertificatesFiles] = useState<FileList | null>(null);
+  const [docFileToUpload, setDocFileToUpload] = useState<File | null>(null);
+
+  const showKntechAlert = (type: "success" | "warning" | "error" | "info", title: string, message: string, imgUrl?: string) => {
+    setCustomAlertType(type);
+    setCustomAlertTitle(title);
+    setCustomAlertMessage(message);
+    setCustomAlertImg(imgUrl);
+    setCustomAlertOpen(true);
+  };
+
+  const [tutorProfileForm, setTutorProfileForm] = useState({
+    bio: "",
+    school: "",
+    major: "",
+    yearOfStudy: "Sinh viên năm 1",
+    hourlyRate: "150000",
+    subjectsToTeach: [] as string[],
+    cardGradient: "bg-gradient-to-r from-blue-600 via-indigo-600 to-[#13519c]",
+  });
+
+  const [tutorStatus, setTutorStatus] = useState<string | null>(null);
+  const [tutorRejectReason, setTutorRejectReason] = useState<string | null>(null);
+  const [verificationForm, setVerificationForm] = useState({
+    cccdFront: "",
+    cccdBack: "",
+    certificate: "",
+  });
+  const [submittingVerification, setSubmittingVerification] = useState(false);
+
+  const handleRegisterNotification = async () => {
+    try {
+      if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+        showKntechAlert("warning", "Không hỗ trợ", "Trình duyệt của bác không hỗ trợ nhận thông báo đẩy!");
+        return;
+      }
+
+      // Register service worker
+      const registration = await navigator.serviceWorker.register('/service-worker.js');
+      console.log('Service Worker registered:', registration);
+
+      // Request Permission
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') {
+        showKntechAlert("warning", "Bị từ chối", "Bác đã chặn quyền thông báo. Vui lòng bật lại trong cài đặt!");
+        return;
+      }
+
+      showKntechAlert("success", "Đăng ký thành công!", "🔔 Bác đã cho phép ứng dụng gửi thông báo đẩy!");
+    } catch (error: any) {
+      console.error(error);
+      showKntechAlert("error", "Lỗi đăng ký", error.message || "Không thể đăng ký nhận thông báo.");
+    }
+  };
+
+  const handleTestNotification = async () => {
+    try {
+      if (!('serviceWorker' in navigator)) {
+        showKntechAlert("warning", "Không hỗ trợ", "Trình duyệt không hỗ trợ Service Worker!");
+        return;
+      }
+
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') {
+        showKntechAlert("warning", "Chưa cấp quyền", "Vui lòng cấp quyền nhận thông báo trước khi test!");
+        return;
+      }
+
+      const registration = await navigator.serviceWorker.ready;
+
+      // Send a simulated push event locally using registration.showNotification
+      const options = {
+        body: '🛡️GiasuTopAnti-Scam vừa phát hiện và chặn một liên kết giả mạo độc hại hướng tới ví tài khoản của bạn. An toàn là trên hết!',
+        icon: 'https://api.dicebear.com/7.x/identicon/png?seed=KNTech',
+        badge: 'https://api.dicebear.com/7.x/identicon/png?seed=KNTech&width=96&height=96',
+        vibrate: [100, 50, 100],
+        data: {
+          url: '/'
+        }
+      };
+
+      await registration.showNotification('Cảnh báo bảo mật từ GiasuTop!', options);
+    } catch (error: any) {
+      console.error(error);
+      showKntechAlert("error", "Lỗi giả lập", error.message || "Lỗi khi kích hoạt thông báo.");
+    }
+  };
+
+  const fetchTutorStatus = async () => {
+    if (!token || !user || user.role !== "TUTOR") return;
+    try {
+      const res = await fetch("http://localhost:5000/api/tutors/me/status", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const json = await res.json();
+      if (json.success) {
+        setTutorStatus(json.data.is_verified);
+        setTutorRejectReason(json.data.reject_reason);
+
+        // Pre-populate fields
+        setTutorProfileForm({
+          bio: json.data.bio || "",
+          school: json.data.school || "",
+          major: json.data.major || "",
+          yearOfStudy: json.data.year_of_study || "Sinh viên năm 1",
+          hourlyRate: json.data.hourly_rate ? String(Number(json.data.hourly_rate)) : "150000",
+          subjectsToTeach: Array.isArray(json.data.subjects_to_teach) ? json.data.subjects_to_teach : [],
+          cardGradient: json.data.card_gradient || "bg-gradient-to-r from-blue-600 via-indigo-600 to-[#13519c]",
+        });
+
+        const docs = json.data.documents || [];
+        const front = docs.find((d: any) => d.doc_type === "CCCD_FRONT")?.url || "";
+        const back = docs.find((d: any) => d.doc_type === "CCCD_BACK")?.url || "";
+        const cert = docs.find((d: any) => d.doc_type === "CERTIFICATE")?.url || "";
+        setVerificationForm({ cccdFront: front, cccdBack: back, certificate: cert });
+      }
+    } catch (e) {
+      console.error("Lỗi tải trạng thái gia sư:", e);
+    }
+  };
+
+  // App navigation
+  const [activeTab, setActiveTab] = useState<TabKey>("home");
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [tutorProfileToView, setTutorProfileToView] = useState<Tutor | null>(null);
+
+  // Core Data States
+  const [tutors, setTutors] = useState<Tutor[]>([]);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [wallet, setWallet] = useState<{ available_balance: number; holding_balance: number }>({
+    available_balance: 0,
+    holding_balance: 0,
+  });
+  const [walletLedger, setWalletLedger] = useState<any[]>([]);
+  const [walletWithdrawals, setWalletWithdrawals] = useState<any[]>([]);
+  const [topupAmountInput, setTopupAmountInput] = useState("");
+  const [withdrawAmountInput, setWithdrawAmountInput] = useState("");
+  const [bankNoInput, setBankNoInput] = useState("");
+  const [bankNameInput, setBankNameInput] = useState("");
+
+  // Subjects, News, and Documents Lists
+  const [subjectList, setSubjectList] = useState<string[]>(["Tất cả"]);
+  const [dbSubjects, setDbSubjects] = useState<Subject[]>([]);
+  const [news, setNews] = useState<NewsItem[]>([]);
+  const [documents, setDocuments] = useState<DocumentItem[]>([]);
+
+  // Filter States
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedSubject, setSelectedSubject] = useState("Tất cả");
+  const [selectedGradeFilter, setSelectedGradeFilter] = useState("Tất cả");
+  const [loadingTutors, setLoadingTutors] = useState(false);
+
+  // Document Filtering States (Screenshot 4 style)
+  const [docSearch, setDocSearch] = useState("");
+  const [selectedDocGrade, setSelectedDocGrade] = useState("Tất cả");
+  const [selectedDocSubject, setSelectedDocSubject] = useState("Tất cả");
+  const [selectedDocType, setSelectedDocType] = useState("Tất cả");
+  const [uploadModalOpen, setUploadModalOpen] = useState(false);
+  const [docUploadForm, setDocUploadForm] = useState({
+    title: "",
+    fileUrl: "",
+    gradeTag: "Lớp 12",
+    typeTag: "Tài liệu",
+    subjectTag: "Toán",
+  });
+
+  // Interaction Modals/Overlays
+  const [selectedTutor, setSelectedTutor] = useState<Tutor | null>(null);
+  const [viewingTutor, setViewingTutor] = useState<Tutor | null>(null);
+  const [chatActivePartner, setChatActivePartner] = useState<any | null>(null);
+  const [selectedNews, setSelectedNews] = useState<NewsItem | null>(null);
+  const [selectedDocument, setSelectedDocument] = useState<DocumentItem | null>(null);
+  const [chats, setChats] = useState<any[]>([]);
+  const [globalChatInput, setGlobalChatInput] = useState("");
+  const [bookingDate, setBookingDate] = useState("");
+  const [bookingStartHour, setBookingStartHour] = useState("19:00");
+  const [bookingDuration, setBookingDuration] = useState("2"); // hours
+  const [bookingError, setBookingError] = useState("");
+  const [bookingSuccess, setBookingSuccess] = useState(false);
+
+  // Payment states
+  const [payingAppt, setPayingAppt] = useState<Appointment | null>(null);
+  const [paymentDetails, setPaymentDetails] = useState<PaymentDetails | null>(null);
+  const [generatingQr, setGeneratingQr] = useState(false);
+  const [paymentComplete, setPaymentComplete] = useState(false);
+
+  // Classroom Simulation States
+  const [activeClassroom, setActiveClassroom] = useState<Appointment | null>(null);
+  const [isMicOn, setIsMicOn] = useState(true);
+  const [isCamOn, setIsCamOn] = useState(true);
+  const [chatMessages, setChatMessages] = useState<Array<{ sender: string; text: string; time: string }>>([]);
+  const [chatInput, setChatInput] = useState("");
+
+  // Floating Help widget & dynamic notification toast
+  const [showSupportWidget, setShowSupportWidget] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Canvas Drawing references
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const isDrawingRef = useRef(false);
+  const drawingColorRef = useRef("#dc2626");
+
+  // Admin Dashboard Section States
+  const [adminTab, setAdminTab] = useState<"subjects" | "tutors" | "monitor" | "users" | "pending_docs" | "news_crud" | "commissions">("subjects");
+
+  // Admin -> Subject management states
+  const [subjectNameInput, setSubjectNameInput] = useState("");
+  const [editingSubject, setEditingSubject] = useState<Subject | null>(null);
+
+  // Admin -> Tutor approval states
+  const [pendingTutors, setPendingTutors] = useState<any[]>([]);
+  const [loadingPending, setLoadingPending] = useState(false);
+  const [adminRejectReason, setAdminRejectReason] = useState("");
+  const [rejectingTutorId, setRejectingTutorId] = useState<string | null>(null);
+
+  // Admin -> Monitor states
+  const [systemStats, setSystemStats] = useState<SystemStats | null>(null);
+  const [systemLogs, setSystemLogs] = useState<SystemLog[]>([]);
+  const [loadingStats, setLoadingStats] = useState(false);
+  const [loadingLogs, setLoadingLogs] = useState(false);
+
+  // Admin -> User management states
+  const [systemUsers, setSystemUsers] = useState<SystemUser[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+  const [editingUser, setEditingUser] = useState<SystemUser | null>(null);
+  const [userForm, setUserForm] = useState({
+    fullName: "",
+    email: "",
+    phone: "",
+    role: "STUDENT" as "STUDENT" | "TUTOR" | "ADMIN",
+    status: "ACTIVE" as "ACTIVE" | "BANNED",
+    password: "",
+  });
+
+  // Admin -> Document approvals states
+  const [pendingDocs, setPendingDocs] = useState<DocumentItem[]>([]);
+  const [loadingPendingDocs, setLoadingPendingDocs] = useState(false);
+
+  // Admin -> News CRUD states
+  const [newsFormOpen, setNewsFormOpen] = useState(false);
+  const [editingNews, setEditingNews] = useState<NewsItem | null>(null);
+  const [newsForm, setNewsForm] = useState({
+    title: "",
+    summary: "",
+    content: "",
+    thumbnailUrl: "",
+    category: "Toán",
+  });
+
+  // Countdown timer for Exam (Screenshot 1 right sidebar look)
+  const [countdownText, setCountdownText] = useState("Còn 15 ngày 12 giờ 34 phút");
+
+  // Consultation Contact form states
+  const [consultForm, setConsultForm] = useState({
+    fullName: "",
+    phone: "",
+    facebookLink: "",
+    grade: "Lớp 12",
+    subject: "Toán học",
+    details: "",
+  });
+
+  // Community / home sub-tab states
+  const [homeSubTab, setHomeSubTab] = useState<"feed" | "community">("feed");
+  const [pendingCommissions, setPendingCommissions] = useState<any[]>([]);
+  const [loadingCommissions, setLoadingCommissions] = useState(false);
+  const [newCommissionRate, setNewCommissionRate] = useState("");
+  const [communityPosts, setCommunityPosts] = useState<CommunityPost[]>(MOCK_COMMUNITY_POSTS);
+  const [commentInputs, setCommentInputs] = useState<{ [id: number]: string }>({});
+  const [newPostContent, setNewPostContent] = useState("");
+
+  // iOS Add to Home Screen Prompt & welcome notification
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+      const isStandalone = window.matchMedia('(display-mode: standalone)').matches
+        || (navigator as any).standalone;
+
+      if (isIOS && !isStandalone) {
+        // Show the prompt after a short delay (2.5s)
+        const timer = setTimeout(() => setShowInstallPrompt(true), 2500);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, []);
+
+  // Dynamic Exam Countdown setup
+  useEffect(() => {
+    const examDate = new Date("2026-06-25T08:00:00");
+    const updateCountdown = () => {
+      const diff = examDate.getTime() - new Date().getTime();
+      if (diff <= 0) {
+        setCountdownText("Kỳ thi đang diễn ra!");
+        return;
+      }
+      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+      const hours = Math.floor((diff / (1000 * 60 * 60)) % 24);
+      const mins = Math.floor((diff / (1000 * 60)) % 60);
+      setCountdownText(`Còn ${days} ngày ${hours} giờ ${mins} phút`);
+    };
+    updateCountdown();
+    const timer = setInterval(updateCountdown, 60000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Fetch Dynamic Data from backend
+  const fetchNews = async () => {
+    try {
+      const res = await fetch("http://localhost:5000/api/news");
+      const json = await res.json();
+      if (json.success) {
+        setNews(json.data);
+      }
+    } catch (e) {
+      console.error("Lỗi tải tin tức:", e);
+    }
+  };
+
+  const fetchDocuments = async () => {
+    try {
+      let url = `http://localhost:5000/api/documents?grade=${selectedDocGrade}&subject=${selectedDocSubject}&type=${selectedDocType}&search=${docSearch}`;
+      const res = await fetch(url);
+      const json = await res.json();
+      if (json.success) {
+        setDocuments(json.data);
+      }
+    } catch (e) {
+      console.error("Lỗi tải tài liệu:", e);
+    }
+  };
+
+  const fetchChats = async () => {
+    try {
+      const res = await fetch("http://localhost:5000/api/chats");
+      const json = await res.json();
+      if (json.success) {
+        setChats(json.data);
+      }
+    } catch (e) {
+      console.error("Lỗi tải tin nhắn:", e);
+    }
+  };
+
+  const sendChat = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!globalChatInput.trim() || !token) return;
+    try {
+      const res = await fetch("http://localhost:5000/api/chats", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ message: globalChatInput }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        setGlobalChatInput("");
+        fetchChats();
+      } else {
+        alert(json.message);
+      }
+    } catch (e) {
+      console.error("Lỗi gửi tin nhắn:", e);
+    }
+  };
+
+  useEffect(() => {
+    if (homeSubTab === "community") {
+      fetchChats();
+      const interval = setInterval(fetchChats, 3000);
+      return () => clearInterval(interval);
+    }
+  }, [homeSubTab]);
+
+  const fetchSubjects = async () => {
+    try {
+      const res = await fetch("http://localhost:5000/api/subjects");
+      const json = await res.json();
+      if (json.success) {
+        setDbSubjects(json.data);
+        const names = json.data.map((s: Subject) => s.name);
+        setSubjectList(["Tất cả", ...names]);
+      }
+    } catch (e) {
+      console.error("Lỗi tải môn học:", e);
+    }
+  };
+
+  // Trigger loading data
+  useEffect(() => {
+    fetchNews();
+    fetchSubjects();
+  }, []);
+
+  useEffect(() => {
+    fetchDocuments();
+  }, [selectedDocGrade, selectedDocSubject, selectedDocType, docSearch]);
+
+  // Load auth state from localStorage on mount
+  useEffect(() => {
+    const savedToken = localStorage.getItem("token");
+    const savedUser = localStorage.getItem("user");
+    if (savedToken && savedUser) {
+      setToken(savedToken);
+      setUser(JSON.parse(savedUser));
+    }
+  }, []);
+
+  // Fetch Tutors
+  const fetchTutors = async () => {
+    setLoadingTutors(true);
+    try {
+      const res = await fetch("http://localhost:5000/api/tutors");
+      const json = await res.json();
+      if (json.success) {
+        setTutors(json.data);
+      }
+    } catch (e) {
+      console.error("Lỗi tải gia sư:", e);
+    } finally {
+      setLoadingTutors(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchTutors();
+  }, []);
+
+  const logClientActivity = async (action: string, details: string) => {
+    try {
+      await fetch("http://localhost:5000/api/logs", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ userId: user?.id || null, action, details }),
+      });
+    } catch (e) {
+      console.error("Lỗi ghi log khách hàng:", e);
+    }
+  };
+
+  const fetchPendingCommissions = async () => {
+    if (!token) return;
+    setLoadingCommissions(true);
+    try {
+      const res = await fetch("http://localhost:5000/api/admin/commissions/pending", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const json = await res.json();
+      if (json.success) {
+        setPendingCommissions(json.data);
+      }
+    } catch (e) {
+      console.error("Lỗi tải đề xuất chiết khấu:", e);
+    } finally {
+      setLoadingCommissions(false);
+    }
+  };
+
+  const handleDecideCommission = async (tutorUserId: string, status: "APPROVED" | "REJECTED") => {
+    if (!token) return;
+    try {
+      const res = await fetch("http://localhost:5000/api/admin/commissions/decide", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ tutorUserId, decision: status }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        logClientActivity("DECIDE_COMMISSION", `Xét duyệt đề xuất chiết khấu cho gia sư ${tutorUserId}: ${status}`);
+        showKntechAlert("success", "Thành công", `Đã ${status === "APPROVED" ? "phê duyệt" : "từ chối"} đề xuất chiết khấu.`);
+        fetchPendingCommissions();
+        fetchTutors();
+      } else {
+        showKntechAlert("error", "Lỗi", formatBackendError(json));
+      }
+    } catch (e) {
+      showKntechAlert("error", "Lỗi kết nối", "Lỗi kết nối đến máy chủ.");
+    }
+  };
+
+  useEffect(() => {
+    if (token && user && user.role === "ADMIN") {
+      fetchPendingCommissions();
+    }
+  }, [token, user]);
+
+  // Dynamic filtered tutors listing
+  const filteredTutors = useMemo(() => {
+    return tutors.filter((t) => {
+      // 1. Search term filter
+      const matchesSearch =
+        t.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (t.school && t.school.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (t.bio && t.bio.toLowerCase().includes(searchTerm.toLowerCase()));
+
+      // 2. Subject filter
+      const matchesSubject =
+        selectedSubject === "Tất cả" ||
+        t.subjects_to_teach.some(sub => sub.toLowerCase().includes(selectedSubject.toLowerCase()));
+
+      // 3. Left sidebar grade category filter
+      let matchesGrade = true;
+      if (selectedGradeFilter !== "Tất cả") {
+        const bioText = (t.bio || "").toLowerCase();
+        const schoolText = (t.school || "").toLowerCase();
+        if (selectedGradeFilter === "Cấp THPT") {
+          matchesGrade = bioText.includes("thpt") || bioText.includes("lớp 12") || bioText.includes("lớp 11") || bioText.includes("lớp 10") || schoolText.includes("thpt");
+        } else if (selectedGradeFilter === "Cấp THCS") {
+          matchesGrade = bioText.includes("thcs") || bioText.includes("cấp 2") || bioText.includes("lớp 9") || bioText.includes("lớp 8") || bioText.includes("lớp 7") || bioText.includes("lớp 6");
+        } else if (selectedGradeFilter === "Cấp Tiểu học") {
+          matchesGrade = bioText.includes("tiểu học") || bioText.includes("cấp 1") || bioText.includes("lớp 5") || bioText.includes("lớp 4") || bioText.includes("lớp 3") || bioText.includes("lớp 2") || bioText.includes("lớp 1");
+        } else if (selectedGradeFilter === "Luyện thi ĐH") {
+          matchesGrade = bioText.includes("đại học") || bioText.includes("luyện thi") || bioText.includes("đgnl") || bioText.includes("hsa") || bioText.includes("tsa") || schoolText.includes("sư phạm") || schoolText.includes("bách khoa");
+        }
+      }
+
+      return matchesSearch && matchesSubject && matchesGrade;
+    });
+  }, [tutors, searchTerm, selectedSubject, selectedGradeFilter]);
+
+  const tutorGradients = [
+    "from-blue-600 to-indigo-700",
+    "from-rose-500 to-red-600",
+    "from-teal-500 to-emerald-650",
+    "from-pink-500 to-rose-600",
+    "from-amber-500 to-orange-600",
+    "from-violet-600 to-purple-755",
+  ];
+
+  // Fetch Appointments and Wallet info when token changes
+  const fetchUserData = async () => {
+    if (!token) return;
+    try {
+      // Fetch appointments
+      const apptRes = await fetch("http://localhost:5000/api/users/me/appointments", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const apptJson = await apptRes.json();
+      if (apptJson.success) {
+        setAppointments(apptJson.data);
+      }
+
+      // Fetch wallet status, ledger and withdraws
+      const walletRes = await fetch("http://localhost:5000/api/wallet/status", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const walletJson = await walletRes.json();
+      if (walletJson.success && walletJson.data) {
+        setWallet({
+          available_balance: Number(walletJson.data.balance.available_balance),
+          holding_balance: Number(walletJson.data.balance.holding_balance),
+        });
+        setWalletLedger(walletJson.data.ledger || []);
+        setWalletWithdrawals(walletJson.data.withdrawals || []);
+      }
+    } catch (e) {
+      console.error("Lỗi tải dữ liệu người dùng:", e);
+    }
+  };
+
+  const handleWebTopup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!topupAmountInput || isNaN(parseFloat(topupAmountInput))) {
+      showKntechAlert("warning", "Sai số tiền", "Vui lòng nhập số tiền nạp hợp lệ");
+      return;
+    }
+    try {
+      const res = await fetch("http://localhost:5000/api/wallet/topup", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ amount: topupAmountInput })
+      });
+      const json = await res.json();
+      if (json.success) {
+        showKntechAlert("success", "Nạp tiền thành công", json.message);
+        setTopupAmountInput("");
+        fetchUserData();
+      } else {
+        showKntechAlert("error", "Lỗi nạp tiền", formatBackendError(json));
+      }
+    } catch (err: any) {
+      showKntechAlert("error", "Lỗi kết nối", "Lỗi kết nối máy chủ");
+    }
+  };
+
+  const handleWebWithdraw = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!withdrawAmountInput || isNaN(parseFloat(withdrawAmountInput))) {
+      showKntechAlert("warning", "Sai số tiền", "Vui lòng nhập số tiền rút hợp lệ");
+      return;
+    }
+    if (!bankNoInput || !bankNameInput) {
+      showKntechAlert("warning", "Thiếu thông tin", "Vui lòng nhập đầy đủ thông tin tài khoản ngân hàng");
+      return;
+    }
+    try {
+      const res = await fetch("http://localhost:5000/api/wallet/withdraw", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          amount: withdrawAmountInput,
+          bankAccountNo: bankNoInput,
+          bankAccountName: bankNameInput
+        })
+      });
+      const json = await res.json();
+      if (json.success) {
+        showKntechAlert("success", "Rút tiền thành công", json.message);
+        setWithdrawAmountInput("");
+        setBankNoInput("");
+        setBankNameInput("");
+        fetchUserData();
+      } else {
+        showKntechAlert("error", "Lỗi rút tiền", formatBackendError(json));
+      }
+    } catch (err: any) {
+      showKntechAlert("error", "Lỗi kết nối", "Lỗi kết nối máy chủ");
+    }
+  };
+
+  useEffect(() => {
+    if (token) {
+      fetchUserData();
+    } else {
+      setAppointments([]);
+      setWallet({ available_balance: 0, holding_balance: 0 });
+    }
+  }, [token]);
+
+  // Fetch Admin Data
+  const fetchPendingTutors = async () => {
+    setLoadingPending(true);
+    try {
+      const res = await fetch("http://localhost:5000/api/admin/tutors/pending", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const json = await res.json();
+      if (json.success) {
+        setPendingTutors(json.data);
+      }
+    } catch (e) {
+      console.error("Lỗi tải hồ sơ gia sư:", e);
+    } finally {
+      setLoadingPending(false);
+    }
+  };
+
+  const fetchSystemStats = async () => {
+    setLoadingStats(true);
+    try {
+      const res = await fetch("http://localhost:5000/api/admin/stats", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const json = await res.json();
+      if (json.success) {
+        setSystemStats(json.data);
+      }
+    } catch (e) {
+      console.error("Lỗi tải thống kê:", e);
+    } finally {
+      setLoadingStats(false);
+    }
+  };
+
+  const fetchSystemLogs = async () => {
+    setLoadingLogs(true);
+    try {
+      const res = await fetch("http://localhost:5000/api/admin/logs", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const json = await res.json();
+      if (json.success) {
+        setSystemLogs(json.data);
+      }
+    } catch (e) {
+      console.error("Lỗi tải nhật ký logs:", e);
+    } finally {
+      setLoadingLogs(false);
+    }
+  };
+
+  const fetchSystemUsers = async () => {
+    setLoadingUsers(true);
+    try {
+      const res = await fetch("http://localhost:5000/api/admin/users", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const json = await res.json();
+      if (json.success) {
+        setSystemUsers(json.data);
+      }
+    } catch (e) {
+      console.error("Lỗi tải danh sách người dùng:", e);
+    } finally {
+      setLoadingUsers(false);
+    }
+  };
+
+  const fetchPendingDocs = async () => {
+    setLoadingPendingDocs(true);
+    try {
+      const res = await fetch("http://localhost:5000/api/admin/documents/pending", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const json = await res.json();
+      if (json.success) {
+        setPendingDocs(json.data);
+      }
+    } catch (e) {
+      console.error("Lỗi tải tài liệu chờ duyệt:", e);
+    } finally {
+      setLoadingPendingDocs(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === "admin" && token) {
+      if (adminTab === "subjects") fetchSubjects();
+      else if (adminTab === "tutors") fetchPendingTutors();
+      else if (adminTab === "monitor") { fetchSystemStats(); fetchSystemLogs(); }
+      else if (adminTab === "users") fetchSystemUsers();
+      else if (adminTab === "pending_docs") fetchPendingDocs();
+      else if (adminTab === "news_crud") fetchNews();
+    }
+  }, [activeTab, adminTab, token]);
+
+  // AuthSuccess Callback
+  const handleAuthSuccess = (newToken: string, newUser: { id: string; email: string; fullName: string; role: string }) => {
+    setToken(newToken);
+    setUser(newUser);
+    localStorage.setItem("token", newToken);
+    localStorage.setItem("user", JSON.stringify(newUser));
+    setToastMessage(`👋 Chào mừng bác ${newUser.fullName} đã đăng nhập thành công!`);
+    logClientActivity("LOGIN", `Người dùng ${newUser.fullName} đăng nhập thành công.`);
+    showKntechAlert("success", "Đăng nhập thành công", `Chào mừng bác ${newUser.fullName} đã quay trở lại với GiasuTop!`);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  // Sign out
+  const handleLogout = () => {
+    logClientActivity("LOGOUT", "Người dùng đăng xuất khỏi hệ thống.");
+    showKntechAlert("info", "Đăng xuất thành công", "Bác đã đăng xuất. Hẹn gặp lại bác nhé!");
+    setToken(null);
+    setUser(null);
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    setActiveTab("home");
+    setToastMessage("🔒 Bác đã đăng xuất khỏi hệ thống.");
+    setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  // Handle tutor booking
+  const handleBookTutor = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBookingError("");
+    setBookingSuccess(false);
+
+    if (!token || !user) {
+      setShowAuthModal(true);
+      return;
+    }
+
+    try {
+      const durationHours = Number(bookingDuration);
+      const formatLocalISO = (d: Date) => {
+        const pad = (n: number) => String(n).padStart(2, "0");
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:00`;
+      };
+
+      if (tutorBookingType === "SINGLE") {
+        if (!bookingDate) {
+          setBookingError("Vui lòng chọn ngày học rõ ràng.");
+          return;
+        }
+        const startDateTime = new Date(`${bookingDate}T${bookingStartHour}:00`);
+        const endDateTime = new Date(startDateTime.getTime() + durationHours * 60 * 60 * 1000);
+        const price = Number(selectedTutor?.hourly_rate || 150000) * durationHours;
+
+        const res = await fetch("http://localhost:5000/api/tutors/book", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            studentId: user.id,
+            tutorId: selectedTutor?.user_id,
+            startTime: formatLocalISO(startDateTime),
+            endTime: formatLocalISO(endDateTime),
+            pricePaid: price,
+            scheduleType: "SINGLE",
+          }),
+        });
+
+        const json = await res.json();
+        if (!res.ok || !json.success) {
+          throw new Error(formatBackendError(json));
+        }
+
+        setBookingSuccess(true);
+        logClientActivity("BOOK_TUTOR_SINGLE", `Đăng ký học thử 1 buổi với gia sư ${selectedTutor?.full_name}. Số tiền: ${price} VND.`);
+        showKntechAlert("success", "Đặt lịch thành công", `Đặt lịch học thử với gia sư ${selectedTutor?.full_name} thành công. Chuyển sang thanh toán...`);
+        fetchUserData();
+
+        const newAppt: Appointment = {
+          id: json.data.appointmentId,
+          student_id: user.id,
+          tutor_id: selectedTutor!.user_id,
+          start_time: formatLocalISO(startDateTime),
+          end_time: formatLocalISO(endDateTime),
+          price_paid: String(price),
+          status: "PENDING",
+          payment_status: "UNPAID",
+          live_room_code: null,
+          live_room_url: null,
+          tutor_name: selectedTutor!.full_name,
+        };
+
+        setTimeout(() => {
+          setSelectedTutor(null);
+          setBookingSuccess(false);
+          setActiveTab("bookings");
+          handleInitiatePayment(newAppt);
+        }, 1500);
+
+      } else {
+        // Generate simulated session timestamps based on week1/week2 selections for longTermWeeks
+        const sessions: Array<{ startTime: string; endTime: string; sessionNumber: number }> = [];
+        let sessionCounter = 1;
+        const now = new Date();
+
+        // Let's generate dates starting tomorrow
+        let currentDayOffset = 1;
+
+        // Map weekday names to index
+        const dayMap: { [key: string]: number } = {
+          "Chủ nhật": 0, "Thứ 2": 1, "Thứ 3": 2, "Thứ 4": 3, "Thứ 5": 4, "Thứ 6": 5, "Thứ 7": 6
+        };
+
+        for (let week = 0; week < longTermWeeks; week++) {
+          const targetDays = (week % 2 === 0) ? longTermSchedule.week1 : longTermSchedule.week2;
+          // For simplicity, let's create a date for each selected weekday in this week block
+          for (const dayName of targetDays) {
+            const targetDayIdx = dayMap[dayName] ?? 1;
+            const sessionDate = new Date();
+            sessionDate.setDate(now.getDate() + currentDayOffset + (week * 7) + ((targetDayIdx - now.getDay() + 7) % 7));
+            sessionDate.setHours(19, 0, 0, 0); // Default 19:00
+
+            const endSessionDate = new Date(sessionDate.getTime() + durationHours * 60 * 60 * 1000);
+            sessions.push({
+              startTime: formatLocalISO(sessionDate),
+              endTime: formatLocalISO(endSessionDate),
+              sessionNumber: sessionCounter++,
+            });
+          }
+        }
+
+        const totalPrice = Number(selectedTutor?.hourly_rate || 150000) * durationHours * sessions.length;
+
+        const res = await fetch("http://localhost:5000/api/tutors/book", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            studentId: user.id,
+            tutorId: selectedTutor?.user_id,
+            pricePaid: totalPrice,
+            scheduleType: "LONG_TERM",
+            customSchedule: longTermSchedule,
+            sessions,
+          }),
+        });
+
+        const json = await res.json();
+        if (!res.ok || !json.success) {
+          throw new Error(formatBackendError(json));
+        }
+
+        setBookingSuccess(true);
+        logClientActivity("BOOK_TUTOR_LONG_TERM", `Đăng ký học dài hạn ${sessions.length} buổi với gia sư ${selectedTutor?.full_name}. Số tiền: ${totalPrice} VND.`);
+        showKntechAlert("success", "Đặt lịch dài hạn thành công", `Đăng ký học dài hạn ${sessions.length} buổi thành công. Chuyển sang thanh toán...`);
+        fetchUserData();
+
+        const dummyParentAppt: Appointment = {
+          id: json.data.appointmentId,
+          student_id: user.id,
+          tutor_id: selectedTutor!.user_id,
+          start_time: sessions[0].startTime,
+          end_time: sessions[0].endTime,
+          price_paid: String(totalPrice),
+          status: "PENDING",
+          payment_status: "UNPAID",
+          live_room_code: null,
+          live_room_url: null,
+          tutor_name: `${selectedTutor!.full_name} (Đăng ký dài hạn ${sessions.length} buổi)`,
+        };
+
+        setTimeout(() => {
+          setSelectedTutor(null);
+          setBookingSuccess(false);
+          setActiveTab("bookings");
+          handleInitiatePayment(dummyParentAppt);
+        }, 1500);
+      }
+
+    } catch (err: any) {
+      setBookingError(err.message || "Đã xảy ra lỗi.");
+    }
+  };
+
+  // Generate QR Code
+  const handleInitiatePayment = async (appt: Appointment) => {
+    setPayingAppt(appt);
+    setGeneratingQr(true);
+    setPaymentComplete(false);
+    setPaymentDetails(null);
+
+    try {
+      const res = await fetch("http://localhost:5000/api/payments/qr", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ appointmentId: appt.id }),
+      });
+
+      const json = await res.json();
+      if (json.success) {
+        setPaymentDetails(json.data);
+      }
+    } catch (e) {
+      console.error("Lỗi tạo QR code:", e);
+    } finally {
+      setGeneratingQr(false);
+    }
+  };
+
+  // Simulate banking transfer payment success
+  const handleSimulatePayment = async () => {
+    if (!paymentDetails) return;
+    try {
+      const res = await fetch("http://localhost:5000/api/payments/sepay/mock-trigger", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ paymentId: paymentDetails.paymentId }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        setPaymentComplete(true);
+        fetchUserData();
+        setToastMessage("💳 Ghi nhận đóng học phí thành công!");
+        setTimeout(() => {
+          setPayingAppt(null);
+          setPaymentDetails(null);
+          setToastMessage(null);
+        }, 2000);
+      } else {
+        alert(json.message);
+      }
+    } catch (e) {
+      console.error("Lỗi giả lập thanh toán:", e);
+    }
+  };
+
+  // Virtual Classroom logic
+  const handleJoinClassroom = (appt: Appointment) => {
+    setActiveClassroom(appt);
+    setChatMessages([
+      {
+        sender: "Hệ thống",
+        text: "Kết nối phòng học trực tuyến thành công! Đường truyền ổn định, mic/cam sẵn sàng.",
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      },
+      {
+        sender: appt.tutor_name || "Gia sư",
+        text: "Cháu chào bác! Mời con bắt đầu học buổi hôm nay ạ. Cháu đã tải bài tập lên bảng phấn.",
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      }
+    ]);
+  };
+
+  const handleSendMessage = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!chatInput.trim()) return;
+
+    const newMsg = {
+      sender: user?.fullName || "Phụ huynh",
+      text: chatInput,
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    };
+
+    setChatMessages((prev) => [...prev, newMsg]);
+    setChatInput("");
+
+    setTimeout(() => {
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          sender: activeClassroom?.tutor_name || "Gia sư",
+          text: "Dạ cháu đang hướng dẫn con giải quyết nội dung bài này ạ.",
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        }
+      ]);
+    }, 1200);
+  };
+
+  // Canvas drawing handlers
+  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    isDrawingRef.current = true;
+    const coords = getEventCoords(e, canvas);
+    ctx.beginPath();
+    ctx.moveTo(coords.x, coords.y);
+    ctx.lineWidth = 3;
+    ctx.lineCap = "round";
+    ctx.strokeStyle = drawingColorRef.current;
+  };
+
+  const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    if (!isDrawingRef.current) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const coords = getEventCoords(e, canvas);
+    ctx.lineTo(coords.x, coords.y);
+    ctx.stroke();
+  };
+
+  const stopDrawing = () => {
+    isDrawingRef.current = false;
+  };
+
+  const getEventCoords = (
+    e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>,
+    canvas: HTMLCanvasElement
+  ) => {
+    const rect = canvas.getBoundingClientRect();
+    if ("touches" in e) {
+      return {
+        x: e.touches[0].clientX - rect.left,
+        y: e.touches[0].clientY - rect.top,
+      };
+    } else {
+      return {
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top,
+      };
+    }
+  };
+
+  const clearCanvas = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  };
+
+  // Format currency
+  const formatVND = (value: number | string) => {
+    const num = Number(value);
+    return num.toLocaleString("vi-VN") + " đ";
+  };
+
+  const formatDateTimeText = (isoStr: string) => {
+    try {
+      const d = new Date(isoStr);
+      if (isNaN(d.getTime())) return isoStr;
+      const pad = (n: number) => String(n).padStart(2, "0");
+      return `${pad(d.getHours())}:${pad(d.getMinutes())} - Ngày ${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
+    } catch {
+      return isoStr;
+    }
+  };
+
+  // Subject Actions
+  const handleAddOrEditSubject = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!subjectNameInput.trim()) return;
+
+    try {
+      if (editingSubject) {
+        const res = await fetch(`http://localhost:5000/api/admin/subjects/${editingSubject.id}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ name: subjectNameInput }),
+        });
+        const json = await res.json();
+        if (json.success) {
+          logClientActivity("EDIT_SUBJECT", `Cập nhật môn học ID ${editingSubject.id} thành "${subjectNameInput}"`);
+          showKntechAlert("success", "Cập nhật thành công", `Đã cập nhật môn học thành "${subjectNameInput}"`);
+          setToastMessage("✏️ Đã cập nhật môn học thành công!");
+          setEditingSubject(null);
+          setSubjectNameInput("");
+          fetchSubjects();
+        } else {
+          showKntechAlert("error", "Lỗi", formatBackendError(json));
+        }
+      } else {
+        const res = await fetch("http://localhost:5000/api/admin/subjects", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ name: subjectNameInput }),
+        });
+        const json = await res.json();
+        if (json.success) {
+          logClientActivity("ADD_SUBJECT", `Thêm môn học mới: "${subjectNameInput}"`);
+          showKntechAlert("success", "Thêm môn học thành công", `Đã thêm môn học mới "${subjectNameInput}" vào hệ thống.`);
+          setToastMessage("➕ Thêm môn học thành công!");
+          setSubjectNameInput("");
+          fetchSubjects();
+        } else {
+          showKntechAlert("error", "Lỗi", formatBackendError(json));
+        }
+      }
+    } catch (e) {
+      console.error("Lỗi cập nhật môn học:", e);
+      showKntechAlert("error", "Lỗi kết nối", "Lỗi cập nhật môn học");
+    }
+  };
+
+  const handleDeleteSubject = async (id: number) => {
+    if (!confirm("Bác có chắc chắn muốn xóa môn học này không?")) return;
+    try {
+      const res = await fetch(`http://localhost:5000/api/admin/subjects/${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const json = await res.json();
+      if (json.success) {
+        logClientActivity("DELETE_SUBJECT", `Xóa môn học ID ${id}`);
+        showKntechAlert("success", "Xóa thành công", "Đã xóa môn học khỏi hệ thống.");
+        setToastMessage("🗑️ Xóa môn học thành công!");
+        fetchSubjects();
+      } else {
+        showKntechAlert("error", "Lỗi", formatBackendError(json));
+      }
+    } catch (e) {
+      console.error("Lỗi xóa môn học:", e);
+      showKntechAlert("error", "Lỗi kết nối", "Lỗi xóa môn học");
+    }
+  };
+
+  // Tutor Decisions
+  const handleDecideTutor = async (tutorUserId: string, decision: "APPROVED" | "REJECTED", reason?: string) => {
+    try {
+      const res = await fetch("http://localhost:5000/api/admin/tutors/decide", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          tutorUserId,
+          decision,
+          rejectReason: reason,
+        }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        logClientActivity("DECIDE_TUTOR", `Xét duyệt gia sư ${tutorUserId} thành ${decision}. Lý do: ${reason || "Không"}`);
+        showKntechAlert("success", "Xét duyệt thành công", decision === "APPROVED" ? "Gia sư đã được phê duyệt hoạt động." : `Đã từ chối hồ sơ gia sư. Lý do: ${reason || ""}`);
+        setToastMessage(decision === "APPROVED" ? "✅ Phê duyệt gia sư thành công!" : "❌ Đã từ chối hồ sơ gia sư.");
+        setRejectingTutorId(null);
+        setAdminRejectReason("");
+        fetchPendingTutors();
+        fetchTutors();
+      } else {
+        showKntechAlert("error", "Lỗi", formatBackendError(json));
+      }
+    } catch (e) {
+      console.error("Lỗi xét duyệt gia sư:", e);
+      showKntechAlert("error", "Lỗi kết nối", "Lỗi xét duyệt gia sư");
+    }
+  };
+
+  // User Manager Actions
+  const handleEditUserClick = (u: SystemUser) => {
+    setEditingUser(u);
+    setUserForm({
+      fullName: u.full_name,
+      email: u.email,
+      phone: u.phone || "",
+      role: u.role,
+      status: u.status,
+      password: "",
+    });
+  };
+
+  const handleUpdateUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingUser) return;
+
+    try {
+      const res = await fetch(`http://localhost:5000/api/admin/users/${editingUser.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          fullName: userForm.fullName,
+          email: userForm.email,
+          phone: userForm.phone || null,
+          role: userForm.role,
+          status: userForm.status,
+          password: userForm.password.trim() !== "" ? userForm.password : undefined,
+        }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        logClientActivity("UPDATE_USER", `Cập nhật tài khoản ${editingUser.id}: Vai trò ${userForm.role}, Trạng thái ${userForm.status}`);
+        showKntechAlert("success", "Cập nhật thành công", "Đã lưu lại thông tin tài khoản.");
+        setToastMessage("👤 Cập nhật hồ sơ tài khoản thành công!");
+        setEditingUser(null);
+        fetchSystemUsers();
+        if (editingUser.id === user?.id) {
+          const updatedUser = { ...user, fullName: userForm.fullName, email: userForm.email, role: userForm.role };
+          setUser(updatedUser);
+          localStorage.setItem("user", JSON.stringify(updatedUser));
+        }
+      } else {
+        showKntechAlert("error", "Lỗi", formatBackendError(json));
+      }
+    } catch (e) {
+      console.error("Lỗi cập nhật người dùng:", e);
+      showKntechAlert("error", "Lỗi kết nối", "Lỗi cập nhật người dùng");
+    }
+  };
+
+  // Documents Actions
+  const handleUploadDoc = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!token) {
+      setShowAuthModal(true);
+      return;
+    }
+    if (!docFileToUpload) {
+      showKntechAlert("warning", "Thiếu tệp tin", "Vui lòng chọn tệp tài liệu (.pdf, .doc, .docx, ...) để tải lên.");
+      return;
+    }
+
+    try {
+      const formData = new FormData();
+      formData.append("title", docUploadForm.title);
+      formData.append("file", docFileToUpload);
+      formData.append("gradeTag", docUploadForm.gradeTag);
+      formData.append("typeTag", docUploadForm.typeTag);
+      formData.append("subjectTag", docUploadForm.subjectTag);
+
+      const res = await fetch("http://localhost:5000/api/documents/upload", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`
+        },
+        body: formData
+      });
+      const json = await res.json();
+      if (json.success) {
+        logClientActivity("UPLOAD_DOCUMENT", `Tải lên tài liệu: ${docUploadForm.title}`);
+        showKntechAlert("success", "Tải lên thành công", "Tài liệu của bác đã được gửi lên hệ thống và đang chờ Admin duyệt.");
+        setToastMessage(json.message);
+        setUploadModalOpen(false);
+        setDocFileToUpload(null);
+        setDocUploadForm({
+          title: "",
+          fileUrl: "",
+          gradeTag: "Lớp 12",
+          typeTag: "Tài liệu",
+          subjectTag: "Toán"
+        });
+        fetchDocuments();
+      } else {
+        showKntechAlert("error", "Lỗi tải lên", formatBackendError(json));
+      }
+    } catch (e: any) {
+      console.error("Lỗi tải lên tài liệu:", e);
+      showKntechAlert("error", "Tải lên thất bại", "Phát hiện tệp không an toàn hoặc lỗi mạng.");
+    }
+  };
+
+  const handleDecideDocument = async (id: number, decision: "APPROVED" | "REJECTED") => {
+    try {
+      const res = await fetch(`http://localhost:5000/api/admin/documents/${id}/decide`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ decision })
+      });
+      const json = await res.json();
+      if (json.success) {
+        logClientActivity("DECIDE_DOCUMENT", `Xét duyệt tài liệu ID ${id} thành ${decision}`);
+        showKntechAlert("success", "Xét duyệt thành công", decision === "APPROVED" ? "Tài liệu đã được phê duyệt xuất bản." : "Đã từ chối tài liệu này.");
+        setToastMessage(decision === "APPROVED" ? "✅ Phê duyệt tài liệu thành công!" : "❌ Đã từ chối tài liệu.");
+        fetchPendingDocs();
+        fetchDocuments();
+      } else {
+        showKntechAlert("error", "Lỗi", formatBackendError(json));
+      }
+    } catch (e) {
+      console.error("Lỗi duyệt tài liệu:", e);
+      showKntechAlert("error", "Lỗi kết nối", "Lỗi duyệt tài liệu");
+    }
+  };
+
+  const handleDeleteDocument = async (id: number) => {
+    if (!confirm("Bác có muốn xóa tài liệu này?")) return;
+    try {
+      const res = await fetch(`http://localhost:5000/api/admin/documents/${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const json = await res.json();
+      if (json.success) {
+        logClientActivity("DELETE_DOCUMENT", `Xóa tài liệu ID ${id}`);
+        showKntechAlert("success", "Xóa thành công", "Tài liệu đã được xóa khỏi hệ thống.");
+        setToastMessage("🗑️ Xóa tài liệu thành công!");
+        fetchDocuments();
+        if (adminTab === "pending_docs") fetchPendingDocs();
+      } else {
+        showKntechAlert("error", "Lỗi", formatBackendError(json));
+      }
+    } catch (e) {
+      console.error("Lỗi xóa tài liệu:", e);
+      showKntechAlert("error", "Lỗi kết nối", "Lỗi xóa tài liệu");
+    }
+  };
+
+  // News Actions
+  const handleAddOrEditNews = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      if (editingNews) {
+        const res = await fetch(`http://localhost:5000/api/admin/news/${editingNews.id}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify(newsForm)
+        });
+        const json = await res.json();
+        if (json.success) {
+          logClientActivity("EDIT_NEWS", `Cập nhật bài viết tin tức ID ${editingNews.id}: "${newsForm.title}"`);
+          showKntechAlert("success", "Cập nhật thành công", `Đã cập nhật bài viết "${newsForm.title}" thành công.`);
+          setToastMessage("✏️ Cập nhật tin tức thành công!");
+          setEditingNews(null);
+          setNewsFormOpen(false);
+          fetchNews();
+        } else {
+          showKntechAlert("error", "Lỗi", formatBackendError(json));
+        }
+      } else {
+        const res = await fetch("http://localhost:5000/api/admin/news", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify(newsForm)
+        });
+        const json = await res.json();
+        if (json.success) {
+          logClientActivity("ADD_NEWS", `Đăng tin tức mới: "${newsForm.title}"`);
+          showKntechAlert("success", "Đăng tin tức thành công", `Đã xuất bản bài viết tin tức mới "${newsForm.title}".`);
+          setToastMessage("➕ Đăng tin tức mới thành công!");
+          setNewsFormOpen(false);
+          setNewsForm({
+            title: "",
+            summary: "",
+            content: "",
+            thumbnailUrl: "",
+            category: "Toán"
+          });
+          fetchNews();
+        } else {
+          showKntechAlert("error", "Lỗi", formatBackendError(json));
+        }
+      }
+    } catch (e) {
+      console.error("Lỗi lưu tin tức:", e);
+      showKntechAlert("error", "Lỗi kết nối", "Lỗi lưu tin tức");
+    }
+  };
+
+  const handleDeleteNews = async (id: number) => {
+    if (!confirm("Bác muốn xóa bài tin này?")) return;
+    try {
+      const res = await fetch(`http://localhost:5000/api/admin/news/${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const json = await res.json();
+      if (json.success) {
+        logClientActivity("DELETE_NEWS", `Xóa bài tin tức ID ${id}`);
+        showKntechAlert("success", "Xóa thành công", "Đã xóa bài tin tức khỏi hệ thống.");
+        setToastMessage("🗑️ Xóa bài tin tức thành công!");
+        fetchNews();
+      } else {
+        showKntechAlert("error", "Lỗi", formatBackendError(json));
+      }
+    } catch (e) {
+      console.error("Lỗi xóa tin tức:", e);
+      showKntechAlert("error", "Lỗi kết nối", "Lỗi xóa tin tức");
+    }
+  };
+
+  // Submit consultation contact form
+  const handleConsultSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    logClientActivity("SUBMIT_CONSULTATION", `Yêu cầu tư vấn cho học sinh ${consultForm.fullName}, SĐT ${consultForm.phone}`);
+    showKntechAlert("success", "Gửi yêu cầu thành công", `Chúng cháu đã tiếp nhận thông tin của bác ${consultForm.fullName}.GiasuTopsẽ gọi tư vấn sớm nhất!`);
+    setToastMessage("📝 Gửi thông tin tư vấn thành công!");
+    setConsultForm({
+      fullName: "",
+      phone: "",
+      facebookLink: "",
+      grade: "Lớp 12",
+      subject: "Toán học",
+      details: ""
+    });
+  };
+
+  const openAuth = (tab: "login" | "register" = "login", role: "STUDENT" | "TUTOR" = "STUDENT") => {
+    setAuthModalConfig({ tab, role });
+    setShowAuthModal(true);
+  };
+
+  const handleTutorRegisterClick = () => {
+    if (!token) {
+      openAuth("register", "TUTOR");
+    } else {
+      if (user?.role === "TUTOR") {
+        fetchTutorStatus();
+        setTutorProfileModalOpen(true);
+      } else {
+        showKntechAlert("warning", "Sai vai trò", "Tài khoản của bác hiện là Phụ huynh / Học sinh. Vui lòng đăng xuất và đăng ký một tài khoản Gia sư mới!");
+      }
+    }
+  };
+
+  const handleUpdateTutorProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const res = await fetch("http://localhost:5000/api/tutors/me/profile", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          bio: tutorProfileForm.bio,
+          school: tutorProfileForm.school,
+          major: tutorProfileForm.major,
+          yearOfStudy: tutorProfileForm.yearOfStudy,
+          hourlyRate: Number(tutorProfileForm.hourlyRate),
+          subjectsToTeach: tutorProfileForm.subjectsToTeach,
+          cardGradient: tutorProfileForm.cardGradient,
+        }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        logClientActivity("UPDATE_TUTOR_PROFILE", `Cập nhật hồ sơ gia sư: Trường ${tutorProfileForm.school}, Giá học phí ${tutorProfileForm.hourlyRate}đ/h`);
+        showKntechAlert("success", "Cập nhật hồ sơ thành công", "Thông tin hồ sơ gia sư của bác đã được cập nhật thành công.");
+        setToastMessage("🎉 Đã cập nhật hồ sơ dạy học thành công!");
+        setTutorProfileModalOpen(false);
+        fetchTutors();
+      } else {
+        showKntechAlert("error", "Lỗi", formatBackendError(json));
+      }
+    } catch (err) {
+      console.error(err);
+      showKntechAlert("error", "Lỗi kết nối", "Lỗi lưu hồ sơ gia sư.");
+    }
+  };
+
+  const handleSubmitVerification = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmittingVerification(true);
+    try {
+      const formData = new FormData();
+
+      if (tutorStatus === "APPROVED") {
+        // Phase 2: Upload certificates only
+        if (!certificatesFiles || certificatesFiles.length === 0) {
+          showKntechAlert("warning", "Thiếu thông tin", "Vui lòng chọn ít nhất một tệp bằng cấp/chứng chỉ.");
+          setSubmittingVerification(false);
+          return;
+        }
+        for (let i = 0; i < certificatesFiles.length; i++) {
+          formData.append("certificates", certificatesFiles[i]);
+        }
+      } else {
+        // Phase 1: Upload identity documents
+        if (!cccdFrontFile || !cccdBackFile || !portraitFile) {
+          showKntechAlert("warning", "Thiếu thông tin", "Vui lòng chọn đầy đủ ảnh chân dung và 2 mặt CCCD.");
+          setSubmittingVerification(false);
+          return;
+        }
+        formData.append("cccdFront", cccdFrontFile);
+        formData.append("cccdBack", cccdBackFile);
+        formData.append("portrait", portraitFile);
+      }
+
+      const res = await fetch("http://localhost:5000/api/tutors/me/documents", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      });
+      const json = await res.json();
+      if (json.success) {
+        showKntechAlert("success", "Thành công!", tutorStatus === "APPROVED" ? "Đã gửi thêm bằng cấp/chứng chỉ thành công!" : "🎉 Gửi hồ sơ xác minh thành công! Đang chờ Ban quản trị duyệt.");
+        setCccdFrontFile(null);
+        setCccdBackFile(null);
+        setPortraitFile(null);
+        setCertificatesFiles(null);
+        fetchTutorStatus();
+      } else {
+        showKntechAlert("error", "Lỗi gửi hồ sơ", formatBackendError(json));
+      }
+    } catch (err) {
+      console.error(err);
+      showKntechAlert("error", "Lỗi kết nối", "Đã xảy ra lỗi kết nối đến máy chủ.");
+    } finally {
+      setSubmittingVerification(false);
+    }
+  };
+
+  const checkUserStatus = async () => {
+    if (!token) return;
+    try {
+      const res = await fetch("http://localhost:5000/api/users/me", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const json = await res.json();
+      if (res.status === 403 && json.code === "USER_BANNED") {
+        setIsBanned(true);
+        showKntechAlert("error", "Tài khoản bị khóa", "Tài khoản của bác đã bị khóa (BANNED) do vi phạm chính sách cộng đồng.");
+        handleLogout();
+      } else if (json.success && json.data.status === "BANNED") {
+        setIsBanned(true);
+        showKntechAlert("error", "Tài khoản bị khóa", "Tài khoản của bác đã bị khóa (BANNED) do vi phạm chính sách cộng đồng.");
+        handleLogout();
+      }
+    } catch (e) {
+      console.error("Lỗi kiểm tra trạng thái tài khoản:", e);
+    }
+  };
+
+  useEffect(() => {
+    if (token) {
+      checkUserStatus();
+    } else {
+      setIsBanned(false);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    if (token && user && user.role === "TUTOR") {
+      fetchTutorStatus();
+    }
+  }, [token, user]);
+
+  return (
+    <div className="bg-[#f0f2f5] min-h-screen font-sans text-slate-700 antialiased dark:bg-[#090b11] dark:text-slate-350">
+
+      {/* Toast notifications */}
+      {toastMessage && (
+        <div className="fixed top-6 right-6 z-50 max-w-sm rounded-xl bg-slate-900/90 text-white px-4 py-3 shadow-2xl backdrop-blur-md border border-white/10 flex items-center gap-2.5 animate-pulse">
+          <IconBell className="h-4 w-4 text-[#1877f2] shrink-0" />
+          <p className="text-xs font-semibold">{toastMessage}</p>
+        </div>
+      )}
+
+      {/* iOS App Add to Home Screen Guide Prompt */}
+      {showInstallPrompt && (
+        <div className="fixed bottom-4 left-4 right-4 z-50 animate-bounce-short">
+          {/* Giao diện Glassmorphism hiện đại theo phong cáchGiasuTop*/}
+          <div className="bg-white/90 dark:bg-slate-900/95 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 shadow-2xl rounded-2xl p-4 flex flex-col gap-3 max-w-sm mx-auto text-slate-800 dark:text-slate-200">
+
+            {/* Tiêu đề & Nút đóng */}
+            <div className="flex justify-between items-start">
+              <div className="flex items-center gap-3">
+                <img src="https://i.ibb.co/NdgYx2Fy/Gemini-Generated-Image-89azsx89azsx89az.png" alt="Logo" className="w-10 h-10 rounded-xl object-cover shrink-0" />
+                <div>
+                  <h3 className="font-bold text-xs text-slate-900 dark:text-white">Cài đặt Web App GiasuTop</h3>
+                  <p className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">Thêm vào màn hình chính để sử dụng như App thật</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowInstallPrompt(false)}
+                className="text-slate-400 hover:text-slate-650 p-1 rounded-lg transition-colors cursor-pointer text-xs"
+              >
+                ✕
+              </button>
+            </div>
+
+            <hr className="border-slate-200/60 dark:border-slate-800/60" />
+
+            {/* Các bước hướng dẫn trực quan */}
+            <div className="text-[11px] space-y-2.5 text-slate-600 dark:text-slate-400">
+              <div className="flex items-start gap-2">
+                <span className="flex items-center justify-center w-5 h-5 rounded-full bg-blue-50 dark:bg-slate-800 text-[#13519c] dark:text-blue-400 font-bold shrink-0 text-[10px]">1</span>
+                <span>Bấm vào nút <strong className="text-slate-900 dark:text-white font-semibold">Chia sẻ (Share)</strong> <i className="fa-solid fa-arrow-up-from-bracket ml-0.5 text-blue-500"></i> trên thanh công cụ của Safari.</span>
+              </div>
+              <div className="flex items-start gap-2">
+                <span className="flex items-center justify-center w-5 h-5 rounded-full bg-blue-50 dark:bg-slate-800 text-[#13519c] dark:text-blue-400 font-bold shrink-0 text-[10px]">2</span>
+                <span>Kéo xuống dưới và chọn <strong className="text-slate-900 dark:text-white font-semibold">Thêm vào MH chính (Add to Home Screen)</strong> <i className="fa-regular fa-square-plus ml-0.5 text-blue-500"></i>.</span>
+              </div>
+            </div>
+
+            {/* Download Button in prompt */}
+            <div className="mt-1 pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
+              <span className="text-[9px] text-slate-400">Hoặc tải trực tiếp tập tin cài đặt:</span>
+              <a
+                href="/kntech-mobile.ipa"
+                download
+                className="inline-flex items-center gap-1 bg-[#13519c] text-white px-2.5 py-1 rounded-lg text-[10px] font-bold shadow hover:bg-blue-800 transition cursor-pointer"
+              >
+                <i className="fa-solid fa-download"></i> Tải IPA
+              </a>
+            </div>
+
+            {/* Mũi tên chỉ xuống dưới nút Share của Safari */}
+            <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-4 h-4 bg-white/90 dark:bg-slate-900/95 border-r border-b border-slate-200/80 dark:border-slate-800/80 rotate-45 backdrop-blur-md hidden sm:block"></div>
+          </div>
+        </div>
+      )}
+
+      {/*GiasuTopBRAND NAV BAR */}
+      <header className="fixed top-0 left-0 right-0 z-40 bg-[#13519c] text-white px-4 shadow flex items-center justify-between h-14">
+
+        {/* Left Search & Hamburger */}
+        <div className="flex items-center gap-2 md:gap-4 flex-1 max-w-xs md:max-w-sm">
+          <button 
+            className="md:hidden text-white p-1 hover:bg-white/10 rounded cursor-pointer transition"
+            onClick={() => setIsDrawerOpen(true)}
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+          </button>
+          
+          <button
+            onClick={() => setActiveTab("home")}
+            className="text-lg font-bold tracking-tight text-white flex items-center gap-2 cursor-pointer focus:outline-none"
+          >
+            <img src="https://i.ibb.co/NdgYx2Fy/Gemini-Generated-Image-89azsx89azsx89az.png" alt="Logo" className="h-8 w-8 rounded-lg object-cover" />
+            <span className="hidden sm:inline font-semibold">GiasuTop</span>
+          </button>
+
+          <div className="relative hidden md:block flex-1 max-w-[220px]">
+            <IconSearch className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-white/60" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Tìm kiếm gia sư..."
+              className="w-full h-8 pl-8 pr-3 text-xs rounded-full border-none bg-white/20 text-white placeholder-white/60 focus:outline-none focus:bg-white focus:text-slate-800 transition"
+            />
+          </div>
+        </div>
+
+        {/* Center Icons Navigation tabs (Hidden on mobile) */}
+        <div className="hidden md:flex items-center justify-center gap-2 lg:gap-4 flex-shrink-0 h-full">
+          {/* Trang chủ */}
+          <button
+            onClick={() => { setActiveTab("home"); setHomeSubTab("feed"); }}
+            className={`h-full px-2.5 flex items-center justify-center relative cursor-pointer focus:outline-none transition ${
+              activeTab === "home" && homeSubTab === "feed" ? "text-white" : "text-white/60 hover:text-white"
+            }`}
+            title="Trang chủ"
+          >
+            <IconHome className="h-4.5 w-4.5" />
+            {activeTab === "home" && homeSubTab === "feed" && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-white" />}
+          </button>
+
+
+
+          {/* Tìm gia sư giỏi */}
+          <button
+            onClick={() => setActiveTab("courses")}
+            className={`h-full px-2.5 flex items-center justify-center relative cursor-pointer focus:outline-none transition ${
+              activeTab === "courses" ? "text-white" : "text-white/60 hover:text-white"
+            }`}
+            title="Tìm gia sư giỏi"
+          >
+            <IconGraduationCap className="h-4.5 w-4.5" />
+            {activeTab === "courses" && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-white" />}
+          </button>
+
+          {/* Lớp học của con */}
+          <button
+            onClick={() => {
+              if (!token) openAuth("login");
+              else setActiveTab("my_courses");
+            }}
+            className={`h-full px-2.5 flex items-center justify-center relative cursor-pointer focus:outline-none transition ${
+              activeTab === "my_courses" ? "text-white" : "text-white/60 hover:text-white"
+            }`}
+            title="Lớp học của con"
+          >
+            <svg className="h-4.5 w-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+            </svg>
+            {activeTab === "my_courses" && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-white" />}
+          </button>
+
+          {/* Thư viện đề thi */}
+          <button
+            onClick={() => {
+              setSelectedDocType("Tất cả");
+              setActiveTab("documents");
+            }}
+            className={`h-full px-2.5 flex items-center justify-center relative cursor-pointer focus:outline-none transition ${
+              activeTab === "documents" ? "text-white" : "text-white/60 hover:text-white"
+            }`}
+            title="Thư viện đề thi"
+          >
+            <IconBook className="h-4.5 w-4.5" />
+            {activeTab === "documents" && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-white" />}
+          </button>
+
+          {/* Tin tức GiasuTop */}
+          <button
+            onClick={() => setActiveTab("news")}
+            className={`h-full px-2.5 flex items-center justify-center relative cursor-pointer focus:outline-none transition ${
+              activeTab === "news" ? "text-white" : "text-white/60 hover:text-white"
+            }`}
+            title="Tin tức GiasuTop"
+          >
+            <IconNewspaper className="h-4.5 w-4.5" />
+            {activeTab === "news" && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-white" />}
+          </button>
+
+          {/* Lịch học gia sư */}
+          <button
+            onClick={() => {
+              if (!token) openAuth("login");
+              else setActiveTab("bookings");
+            }}
+            className={`h-full px-2.5 flex items-center justify-center relative cursor-pointer focus:outline-none transition ${
+              activeTab === "bookings" ? "text-white" : "text-white/60 hover:text-white"
+            }`}
+            title="Lịch học gia sư"
+          >
+            <svg className="h-4.5 w-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+              <line x1="16" y1="2" x2="16" y2="6" />
+              <line x1="8" y1="2" x2="8" y2="6" />
+              <line x1="3" y1="10" x2="21" y2="10" />
+            </svg>
+            {activeTab === "bookings" && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-white" />}
+          </button>
+
+          {/* Ví / Thu nhập */}
+          <button
+            onClick={() => {
+              if (!token) openAuth("login");
+              else setActiveTab("wallet");
+            }}
+            className={`h-full px-2.5 flex items-center justify-center relative cursor-pointer focus:outline-none transition ${
+              activeTab === "wallet" ? "text-white" : "text-white/60 hover:text-white"
+            }`}
+            title="Ví / Thu nhập"
+          >
+            <IconWallet className="h-4.5 w-4.5" />
+            {activeTab === "wallet" && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-white" />}
+          </button>
+
+          {/* Cộng đồng chat */}
+          <button
+            onClick={() => {
+              setHomeSubTab("community");
+              setActiveTab("home");
+            }}
+            className={`h-full px-2.5 flex items-center justify-center relative cursor-pointer focus:outline-none transition ${
+              activeTab === "home" && homeSubTab === "community" ? "text-white" : "text-white/60 hover:text-white"
+            }`}
+            title="Cộng đồng chat trực tuyến"
+          >
+            <svg className="h-4.5 w-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+              <circle cx="9" cy="7" r="4" />
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+              <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+            </svg>
+            {activeTab === "home" && homeSubTab === "community" && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-white" />}
+          </button>
+
+          {/* Đăng ký gia sư */}
+          <button
+            onClick={handleTutorRegisterClick}
+            className={`h-full px-2.5 flex items-center justify-center relative cursor-pointer focus:outline-none transition text-pink-300 hover:text-white`}
+            title={user?.role === "TUTOR" ? "Hồ sơ dạy học" : "Đăng ký làm gia sư"}
+          >
+            <svg className="h-4.5 w-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+              <circle cx="8.5" cy="7" r="4" />
+              <line x1="20" y1="8" x2="20" y2="14" />
+              <line x1="23" y1="11" x2="17" y2="11" />
+            </svg>
+          </button>
+
+          {/* Trang cá nhân */}
+          <button
+            onClick={() => {
+              if (!token) openAuth("login");
+              else {
+                setTutorProfileToView(null);
+                setActiveTab("profile");
+              }
+            }}
+            className={`h-full px-2.5 flex items-center justify-center relative cursor-pointer focus:outline-none transition ${
+              activeTab === "profile" && !tutorProfileToView ? "text-white" : "text-white/60 hover:text-white"
+            }`}
+            title="Trang cá nhân"
+          >
+            <IconUser className="h-4.5 w-4.5" />
+            {activeTab === "profile" && !tutorProfileToView && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-white" />}
+          </button>
+
+          {/* Hỗ trợ Zalo */}
+          <a
+            href="https://zalo.me/0971920024"
+            target="_blank"
+            rel="noreferrer"
+            className="h-full px-2.5 flex items-center justify-center relative text-yellow-300 hover:text-white cursor-pointer focus:outline-none text-xs font-bold gap-1 transition"
+            title="Liên hệ Zalo hỗ trợ"
+          >
+            <svg className="h-4.5 w-4.5 text-yellow-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+            </svg>
+          </a>
+
+          {/* Admin Navigation Dropdown */}
+          {user && user.role === "ADMIN" && (
+            <div className="relative group h-full flex items-center">
+              <button
+                className={`h-full px-2.5 flex items-center gap-1 text-yellow-400 hover:text-white font-bold text-xs focus:outline-none cursor-pointer transition ${
+                  activeTab === "admin" ? "text-yellow-300" : ""
+                }`}
+              >
+                <div className="h-6.5 w-6.5 rounded-full flex items-center justify-center bg-white text-slate-900 border-2 border-yellow-400 shrink-0 shadow">
+                  <svg className="h-3.5 w-3.5 text-slate-900" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <circle cx="12" cy="12" r="3" />
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                  </svg>
+                </div>
+                <span className="hidden lg:inline text-[11px]">Admin ▼</span>
+              </button>
+              <div className="absolute top-14 right-0 w-52 bg-white dark:bg-slate-900 border rounded-xl shadow-2xl py-2 hidden group-hover:block z-50 text-slate-800 dark:text-slate-200">
+                <button
+                  onClick={() => { setActiveTab("admin"); setAdminTab("tutors"); }}
+                  className={`w-full text-left px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-semibold flex items-center gap-2 ${
+                    activeTab === "admin" && adminTab === "tutors" ? "bg-slate-50 text-[#13519c]" : ""
+                  }`}
+                >
+                  <svg className="h-3.5 w-3.5 text-[#13519c]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
+                  Duyệt Giáo Viên ({pendingTutors.length})
+                </button>
+                <button
+                  onClick={() => { setActiveTab("admin"); setAdminTab("subjects"); }}
+                  className={`w-full text-left px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-semibold flex items-center gap-2 ${
+                    activeTab === "admin" && adminTab === "subjects" ? "bg-slate-50 text-[#13519c]" : ""
+                  }`}
+                >
+                  <svg className="h-3.5 w-3.5 text-[#13519c]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20M4 19.5A2.5 2.5 0 0 0 6.5 22H20M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5z" /></svg>
+                  Quản lý Môn Học
+                </button>
+                <button
+                  onClick={() => { setActiveTab("admin"); setAdminTab("pending_docs"); }}
+                  className={`w-full text-left px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-semibold flex items-center gap-2 ${
+                    activeTab === "admin" && adminTab === "pending_docs" ? "bg-slate-50 text-[#13519c]" : ""
+                  }`}
+                >
+                  <svg className="h-3.5 w-3.5 text-[#13519c]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" /></svg>
+                  Duyệt Tài Liệu
+                </button>
+                <button
+                  onClick={() => { setActiveTab("admin"); setAdminTab("commissions"); fetchPendingCommissions(); }}
+                  className={`w-full text-left px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-semibold flex items-center gap-2 ${
+                    activeTab === "admin" && adminTab === "commissions" ? "bg-slate-50 text-[#13519c]" : ""
+                  }`}
+                >
+                  <svg className="h-3.5 w-3.5 text-[#13519c]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2" /><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" /></svg>
+                  Duyệt Deal Hoa Hồng ({pendingCommissions.length})
+                </button>
+                <div className="border-t my-1"></div>
+                <button
+                  onClick={() => { setActiveTab("admin"); setAdminTab("news_crud"); }}
+                  className={`w-full text-left px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-semibold flex items-center gap-2 ${
+                    activeTab === "admin" && adminTab === "news_crud" ? "bg-slate-50 text-[#13519c]" : ""
+                  }`}
+                >
+                  <svg className="h-3.5 w-3.5 text-[#13519c]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" /><path d="M16 8h2m-2 4h2M6 8h6v8H6z" /></svg>
+                  Quản Lý Tin Tức
+                </button>
+                <button
+                  onClick={() => { setActiveTab("admin"); setAdminTab("monitor"); }}
+                  className={`w-full text-left px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-semibold flex items-center gap-2 ${
+                    activeTab === "admin" && adminTab === "monitor" ? "bg-slate-50 text-[#13519c]" : ""
+                  }`}
+                >
+                  <svg className="h-3.5 w-3.5 text-[#13519c]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2" /><line x1="8" y1="21" x2="16" y2="21" /><line x1="12" y1="17" x2="12" y2="21" /></svg>
+                  Logs & Thống Kê
+                </button>
+                <button
+                  onClick={() => { setActiveTab("admin"); setAdminTab("users"); }}
+                  className={`w-full text-left px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-semibold flex items-center gap-2 ${
+                    activeTab === "admin" && adminTab === "users" ? "bg-slate-50 text-[#13519c]" : ""
+                  }`}
+                >
+                  <svg className="h-3.5 w-3.5 text-[#13519c]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
+                  Quản Lý Người Dùng
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Right User Avatar Dropdown & Login */}
+        <div className="flex items-center gap-3 flex-1 justify-end">
+          {token && user ? (
+            <div className="flex items-center gap-2">
+              <div 
+                onClick={() => { setTutorProfileToView(null); setActiveTab("profile"); }}
+                className="flex items-center gap-2 cursor-pointer hover:opacity-85 transition shrink-0"
+                title="Xem trang cá nhân"
+              >
+                <span className="text-xs font-semibold text-white hidden lg:inline">{user.fullName}</span>
+                <img
+                  src={`https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(user.email)}`}
+                  alt="Avatar"
+                  className="h-8 w-8 rounded-full border border-white/20 bg-slate-800"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="bg-black/20 hover:bg-black/35 text-[11px] font-semibold px-3 py-1.5 rounded-full cursor-pointer"
+              >
+                Đăng xuất
+              </button>
+            </div>
+          ) : (
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => openAuth("login")}
+                className="bg-white/10 hover:bg-white/20 text-white font-semibold px-4 h-8 text-xs rounded-lg cursor-pointer border border-white/10"
+              >
+                Đăng nhập
+              </button>
+            </div>
+          )}
+        </div>
+      </header>
+
+      {/* MAIN CONTENT LAYOUT WITH FIXED LEFT SIDEBAR */}
+      <div className="pt-14 min-h-screen flex bg-[#f0f2f5] dark:bg-[#090b11]">
+
+        {/* COLUMN 1: FIXED LEFT SIDEBAR */}
+        <aside className="hidden md:flex flex-col justify-between fixed left-0 top-14 bottom-0 w-64 bg-white dark:bg-[#111827] border-r border-slate-200/50 dark:border-slate-800 z-30 overflow-y-auto p-3 pb-14 space-y-4">
+          <div className="space-y-4">
+
+            {/* 1. If activeTab is 'courses' (Tìm Gia Sư) -> categories moved inline into content */}
+
+            {/* 2. If activeTab is 'documents' (Tài liệu) -> show filter widgets */}
+            {activeTab === "documents" && (
+              <div className="bg-white dark:bg-[#111827] rounded-xl p-3 shadow-sm border border-slate-200/50 dark:border-slate-800 space-y-3 hidden md:block text-xs">
+                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Bộ lọc tìm kiếm</span>
+
+                {/* Search */}
+                <div className="relative">
+                  <IconSearch className="absolute left-3 top-1/2 -translate-y-1/2 h-3 w-3 text-slate-400" />
+                  <input
+                    type="text"
+                    value={docSearch}
+                    onChange={(e) => setDocSearch(e.target.value)}
+                    placeholder="Tìm tên đề thi..."
+                    className="w-full h-8 pl-8 pr-3 text-[11px] rounded-lg border bg-white dark:bg-slate-900 focus:outline-none"
+                  />
+                </div>
+
+                {/* Subject filters */}
+                <div className="space-y-1.5">
+                  <label className="block text-[10px] uppercase font-bold text-slate-400">Môn Học</label>
+                  <div className="flex flex-wrap gap-1">
+                    {["Tất cả", "Toán", "Lý", "Hóa", "Văn", "Tiếng Anh", "Sinh học"].map((sub) => (
+                      <button
+                        key={sub}
+                        onClick={() => setSelectedDocSubject(sub)}
+                        className={`px-2 py-1 rounded text-[10px] font-semibold border transition ${
+                          selectedDocSubject === sub
+                            ? "bg-[#13519c] text-white"
+                            : "bg-slate-50 hover:bg-slate-100 text-slate-600 dark:bg-slate-900/60 dark:text-slate-300 border-slate-100 dark:border-slate-800"
+                        }`}
+                      >
+                        {sub}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Grade filters */}
+                <div className="space-y-1.5">
+                  <label className="block text-[10px] uppercase font-bold text-slate-400">Khối Lớp</label>
+                  <div className="flex flex-wrap gap-1">
+                    {["Tất cả", "Lớp 10", "Lớp 11", "Lớp 12"].map((grade) => (
+                      <button
+                        key={grade}
+                        onClick={() => setSelectedDocGrade(grade)}
+                        className={`px-2 py-1 rounded text-[10px] font-semibold border transition ${
+                          selectedDocGrade === grade
+                            ? "bg-[#13519c] text-white"
+                            : "bg-slate-50 hover:bg-slate-100 text-slate-600 dark:bg-slate-900/60 dark:text-slate-300 border-slate-100 dark:border-slate-800"
+                        }`}
+                      >
+                        {grade}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+              {/* Sidebar Button: Trang chủ */}
+              <button
+                onClick={() => {
+                  setHomeSubTab("feed");
+                  setActiveTab("home");
+                }}
+                className={`w-full flex items-center justify-center md:justify-between p-2 md:px-3 md:py-2.5 rounded-xl text-xs font-semibold text-left transition cursor-pointer ${
+                  activeTab === "home" && homeSubTab === "feed"
+                    ? "bg-slate-100 text-[#13519c] dark:bg-slate-800"
+                    : "hover:bg-slate-50 text-slate-650 dark:text-slate-350"
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="h-8 w-8 rounded-full flex items-center justify-center text-white shrink-0" style={{ background: "linear-gradient(135deg, #1877f2, #13519c)" }}>
+                    <IconHome className="h-4 w-4 text-white" />
+                  </div>
+                  <span className="hidden md:inline">Trang chủ</span>
+                </div>
+                <IconChevronRight className="h-3.5 w-3.5 text-slate-300 hidden md:block shrink-0" />
+              </button>
+
+
+
+              {/* Sidebar Button: Tìm gia sư giỏi */}
+              <button
+                onClick={() => setActiveTab("courses")}
+                className={`w-full flex items-center justify-center md:justify-between p-2 md:px-3 md:py-2.5 rounded-xl text-xs font-semibold text-left transition cursor-pointer ${activeTab === "courses" ? "bg-slate-100 text-[#13519c] dark:bg-slate-800" : "hover:bg-slate-50 text-slate-650 dark:text-slate-350"
+                  }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="h-8 w-8 rounded-full flex items-center justify-center text-white shrink-0" style={{ background: "linear-gradient(135deg, #2196f3, #00abcd)" }}>
+                    <svg className="h-4 w-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M22 10v6M2 10l10-5 10 5-10 5z" />
+                      <path d="M6 12v5c0 2 2 3 6 3s6-1 6-3v-5" />
+                    </svg>
+                  </div>
+                  <span className="hidden md:inline">Tìm gia sư giỏi</span>
+                </div>
+                <IconChevronRight className="h-3.5 w-3.5 text-slate-300 hidden md:block shrink-0" />
+              </button>
+
+              {/* Sidebar Button: Lớp học của con */}
+              <button
+                onClick={() => {
+                  if (!token) openAuth("login");
+                  else setActiveTab("my_courses");
+                }}
+                className={`w-full flex items-center justify-center md:justify-between p-2 md:px-3 md:py-2.5 rounded-xl text-xs font-semibold text-left transition cursor-pointer ${activeTab === "my_courses" ? "bg-slate-100 text-[#13519c] dark:bg-slate-800" : "hover:bg-slate-50 text-slate-650 dark:text-slate-350"
+                  }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="h-8 w-8 rounded-full flex items-center justify-center text-white shrink-0" style={{ background: "linear-gradient(135deg, #ff9800, #ff5722)" }}>
+                    <svg className="h-4 w-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                    </svg>
+                  </div>
+                  <span className="hidden md:inline">Lớp học của con</span>
+                </div>
+                <IconChevronRight className="h-3.5 w-3.5 text-slate-300 hidden md:block shrink-0" />
+              </button>
+
+              {/* Sidebar Button: Thư viện đề thi */}
+              <button
+                onClick={() => {
+                  setSelectedDocType("Tất cả");
+                  setActiveTab("documents");
+                }}
+                className={`w-full flex items-center justify-center md:justify-between p-2 md:px-3 md:py-2.5 rounded-xl text-xs font-semibold text-left transition cursor-pointer ${activeTab === "documents" ? "bg-slate-100 text-[#13519c] dark:bg-slate-800" : "hover:bg-slate-50 text-slate-650 dark:text-slate-350"
+                  }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="h-8 w-8 rounded-full flex items-center justify-center text-white shrink-0" style={{ background: "linear-gradient(135deg, #607d8b, #455a64)" }}>
+                    <svg className="h-4 w-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                      <polyline points="14 2 14 8 20 8" />
+                      <line x1="16" y1="13" x2="8" y2="13" />
+                      <line x1="16" y1="17" x2="8" y2="17" />
+                    </svg>
+                  </div>
+                  <span className="hidden md:inline">Thư viện đề thi</span>
+                </div>
+                <IconChevronRight className="h-3.5 w-3.5 text-slate-300 hidden md:block shrink-0" />
+              </button>
+
+              {/* Sidebar Button: Tin tức GiasuTop */}
+              <button
+                onClick={() => setActiveTab("news")}
+                className={`w-full flex items-center justify-center md:justify-between p-2 md:px-3 md:py-2.5 rounded-xl text-xs font-semibold text-left transition cursor-pointer ${activeTab === "news" ? "bg-slate-100 text-[#13519c] dark:bg-slate-800" : "hover:bg-slate-50 text-slate-650 dark:text-slate-350"
+                  }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="h-8 w-8 rounded-full flex items-center justify-center text-white shrink-0" style={{ background: "linear-gradient(135deg, #4caf50, #8bc34a)" }}>
+                    <svg className="h-4 w-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+                      <path d="M16 8h2M16 12h2M16 16h2M6 8h6v8H6z" />
+                    </svg>
+                  </div>
+                  <span className="hidden md:inline">Tin tức GiasuTop</span>
+                </div>
+                <IconChevronRight className="h-3.5 w-3.5 text-slate-300 hidden md:block shrink-0" />
+              </button>
+
+              {/* Sidebar Button: Lịch học gia sư */}
+              <button
+                onClick={() => {
+                  if (!token) openAuth("login");
+                  else setActiveTab("bookings");
+                }}
+                className={`w-full flex items-center justify-center md:justify-between p-2 md:px-3 md:py-2.5 rounded-xl text-xs font-semibold text-left transition cursor-pointer ${activeTab === "bookings" ? "bg-slate-100 text-[#13519c] dark:bg-slate-800" : "hover:bg-slate-50 text-slate-650 dark:text-slate-350"
+                  }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="h-8 w-8 rounded-full flex items-center justify-center text-slate-850 shrink-0" style={{ background: "linear-gradient(135deg, #ffeb3b, #ffc107)", color: "#1e293b" }}>
+                    <svg className="h-4 w-4 text-slate-850" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "#1e293b" }}>
+                      <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                      <line x1="16" y1="2" x2="16" y2="6" />
+                      <line x1="8" y1="2" x2="8" y2="6" />
+                      <line x1="3" y1="10" x2="21" y2="10" />
+                    </svg>
+                  </div>
+                  <span className="hidden md:inline">Lịch học gia sư</span>
+                </div>
+                <IconChevronRight className="h-3.5 w-3.5 text-slate-300 hidden md:block shrink-0" />
+              </button>
+
+              {/* Sidebar Button: Ví / Thu nhập */}
+              <button
+                onClick={() => {
+                  if (!token) openAuth("login");
+                  else setActiveTab("wallet");
+                }}
+                className={`w-full flex items-center justify-center md:justify-between p-2 md:px-3 md:py-2.5 rounded-xl text-xs font-semibold text-left transition cursor-pointer ${activeTab === "wallet" ? "bg-slate-100 text-[#13519c] dark:bg-slate-800" : "hover:bg-slate-50 text-slate-650 dark:text-slate-350"}`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="h-8 w-8 rounded-full flex items-center justify-center text-white shrink-0" style={{ background: "linear-gradient(135deg, #10b981, #059669)" }}>
+                    <IconWallet className="h-4 w-4 text-white" />
+                  </div>
+                  <span className="hidden md:inline">Ví / Thu nhập</span>
+                </div>
+                <IconChevronRight className="h-3.5 w-3.5 text-slate-300 hidden md:block shrink-0" />
+              </button>
+
+              {/* Sidebar Button: Cộng đồng */}
+              <button
+                onClick={() => {
+                  setHomeSubTab("community");
+                  setActiveTab("home");
+                }}
+                className={`w-full flex items-center justify-center md:justify-between p-2 md:px-3 md:py-2.5 rounded-xl text-xs font-semibold text-left transition cursor-pointer ${
+                  activeTab === "home" && homeSubTab === "community"
+                    ? "bg-slate-100 text-[#13519c] dark:bg-slate-800"
+                    : "hover:bg-slate-50 text-slate-655 dark:text-slate-350"
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="h-8 w-8 rounded-full flex items-center justify-center text-white shrink-0" style={{ background: "linear-gradient(135deg, #2e7d32, #1b5e20)" }}>
+                    <svg className="h-4 w-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                      <circle cx="9" cy="7" r="4" />
+                      <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                    </svg>
+                  </div>
+                  <span className="hidden md:inline">Cộng đồng chat</span>
+                </div>
+                <IconChevronRight className="h-3.5 w-3.5 text-slate-300 hidden md:block shrink-0" />
+              </button>
+
+              {/* Sidebar Button: Đăng ký làm gia sư (Or Hồ sơ gia sư if already a Tutor) */}
+              <button
+                onClick={handleTutorRegisterClick}
+                className="w-full flex items-center justify-center md:justify-between p-2 md:px-3 md:py-2.5 rounded-xl text-xs font-semibold text-left transition cursor-pointer hover:bg-slate-50 text-slate-650 dark:text-slate-350"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="h-8 w-8 rounded-full flex items-center justify-center text-white shrink-0" style={{ background: "linear-gradient(135deg, #e91e63, #f44336)" }}>
+                    <svg className="h-4 w-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                      <circle cx="8.5" cy="7" r="4" />
+                      <line x1="20" y1="8" x2="20" y2="14" />
+                      <line x1="23" y1="11" x2="17" y2="11" />
+                    </svg>
+                  </div>
+                  <span className="hidden md:inline">
+                    {user?.role === "TUTOR" ? "Hồ sơ dạy học" : "Đăng ký làm gia sư"}
+                  </span>
+                </div>
+                <IconChevronRight className="h-3.5 w-3.5 text-slate-300 hidden md:block shrink-0" />
+              </button>
+
+              {/* Sidebar Button: Trang cá nhân */}
+              <button
+                onClick={() => {
+                  if (!token) openAuth("login");
+                  else {
+                    setTutorProfileToView(null);
+                    setActiveTab("profile");
+                  }
+                }}
+                className={`w-full flex items-center justify-center md:justify-between p-2 md:px-3 md:py-2.5 rounded-xl text-xs font-semibold text-left transition cursor-pointer ${
+                  activeTab === "profile" && !tutorProfileToView
+                    ? "bg-slate-100 text-[#13519c] dark:bg-slate-800"
+                    : "hover:bg-slate-50 text-slate-655 dark:text-slate-350"
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="h-8 w-8 rounded-full flex items-center justify-center text-white shrink-0" style={{ background: "linear-gradient(135deg, #009688, #4db6ac)" }}>
+                    <IconUser className="h-4 w-4 text-white" />
+                  </div>
+                  <span className="hidden md:inline">Trang cá nhân</span>
+                </div>
+                <IconChevronRight className="h-3.5 w-3.5 text-slate-300 hidden md:block shrink-0" />
+              </button>
+
+              {/* Sidebar Link: Hỗ trợ Zalo */}
+              <a
+                href="https://zalo.me/0971920024"
+                target="_blank"
+                rel="noreferrer"
+                className="w-full flex items-center justify-center md:justify-between p-2 md:px-3 md:py-2.5 rounded-xl text-xs font-semibold text-left transition cursor-pointer hover:bg-slate-50 text-slate-655 dark:text-slate-350"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="h-8 w-8 rounded-full flex items-center justify-center text-white shrink-0" style={{ background: "linear-gradient(135deg, #0288d1, #005691)" }}>
+                    <svg className="h-4 w-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                    </svg>
+                  </div>
+                  <span className="hidden md:inline">Hỗ trợ Zalo</span>
+                </div>
+                <IconChevronRight className="h-3.5 w-3.5 text-slate-300 hidden md:block shrink-0" />
+              </a>
+
+              {/* Sidebar Button: Quản trị hệ thống */}
+              {user && user.role === "ADMIN" && (
+                <div className="space-y-1">
+                  <button
+                    onClick={() => {
+                      setActiveTab("admin");
+                      setAdminTab("subjects");
+                    }}
+                    className={`w-full flex items-center justify-center md:justify-between p-2 md:px-3 md:py-2.5 rounded-xl text-xs font-semibold text-left transition cursor-pointer ${
+                      activeTab === "admin"
+                        ? "bg-slate-100 text-[#13519c] dark:bg-slate-800"
+                        : "hover:bg-slate-50 text-slate-650 dark:text-slate-350"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="h-8 w-8 rounded-full flex items-center justify-center text-white shrink-0 bg-slate-800">
+                        <svg className="h-4 w-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                          <line x1="4" y1="21" x2="4" y2="14" />
+                          <line x1="4" y1="10" x2="4" y2="3" />
+                          <line x1="12" y1="21" x2="12" y2="12" />
+                          <line x1="12" y1="8" x2="12" y2="3" />
+                          <line x1="20" y1="21" x2="20" y2="16" />
+                          <line x1="20" y1="12" x2="20" y2="3" />
+                          <line x1="1" y1="14" x2="7" y2="14" />
+                          <line x1="9" y1="8" x2="15" y2="8" />
+                          <line x1="17" y1="16" x2="23" y2="16" />
+                        </svg>
+                      </div>
+                      <span className="hidden md:inline">Quản trị hệ thống</span>
+                    </div>
+                    <IconChevronRight className={`h-3.5 w-3.5 text-slate-300 hidden md:block shrink-0 transition-transform ${activeTab === "admin" ? "rotate-90" : ""}`} />
+                  </button>
+
+                  {/* Desktop Nested Admin Sub-menus */}
+                  {user && user.role === "ADMIN" && (
+                    <div className="pl-6 space-y-1 hidden md:block border-l border-slate-200 ml-4 py-1 animate-fade-in">
+                      <button
+                        onClick={() => { setActiveTab("admin"); setAdminTab("tutors"); }}
+                        className={`w-full text-left px-2 py-1.5 rounded-lg text-[10px] font-semibold transition ${
+                          activeTab === "admin" && adminTab === "tutors" ? "bg-slate-100 text-[#13519c]" : "text-slate-500 hover:bg-slate-50"
+                        }`}
+                      >
+                        👩‍🏫 Duyệt Giáo Viên ({pendingTutors.length})
+                      </button>
+                      <button
+                        onClick={() => { setActiveTab("admin"); setAdminTab("subjects"); }}
+                        className={`w-full text-left px-2 py-1.5 rounded-lg text-[10px] font-semibold transition ${
+                          activeTab === "admin" && adminTab === "subjects" ? "bg-slate-100 text-[#13519c]" : "text-slate-500 hover:bg-slate-50"
+                        }`}
+                      >
+                        📚 Quản lý Môn Học
+                      </button>
+                      <button
+                        onClick={() => { setActiveTab("admin"); setAdminTab("pending_docs"); }}
+                        className={`w-full text-left px-2 py-1.5 rounded-lg text-[10px] font-semibold transition ${
+                          activeTab === "admin" && adminTab === "pending_docs" ? "bg-slate-100 text-[#13519c]" : "text-slate-500 hover:bg-slate-50"
+                        }`}
+                      >
+                        📄 Duyệt Tài Liệu ({pendingDocs.length})
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* TAB 1: HOME FEED */}
+              {activeTab === "home" && (
+                <HomeTab
+                  homeSubTab={homeSubTab}
+                  setHomeSubTab={setHomeSubTab}
+                  handleRegisterNotification={handleRegisterNotification}
+                  handleTestNotification={handleTestNotification}
+                  tutors={tutors}
+                  formatVND={formatVND}
+                  setViewingTutor={setViewingTutor}
+                  setSelectedGradeFilter={setSelectedGradeFilter}
+                  setActiveTab={setActiveTab}
+                  showKntechAlert={showKntechAlert}
+                  token={token}
+                  user={user}
+                  chatActivePartner={chatActivePartner}
+                  setChatActivePartner={setChatActivePartner}
+                  openAuth={openAuth}
+                />
+              )}
+
+              {/* OTHER TABS... */}
+              {activeTab !== "home" && (
+                <div className="bg-white dark:bg-slate-900 rounded-xl p-4 shadow-sm">
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="text-xl">🎓</span>
+                    <span className="text-sm font-semibold text-slate-800 dark:text-white">Đội ngũ gia sư</span>
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">Gia sư Bách Khoa là sinh viên các trường ĐH Bách Khoa, Khoa học Tự nhiên, ĐH Quốc gia và các trường đại học uy tín khác.</p>
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                    {tutors.slice(0, 4).map((t) => (
+                      <div key={t.user_id} className="border dark:border-slate-700 rounded-lg p-3 text-center hover:shadow-md transition-shadow">
+                        <img
+                          src={t.avatar_url || `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(t.email)}`}
+                          alt={t.full_name}
+                          className="w-10 h-10 bg-slate-100 dark:bg-slate-800 rounded-full mx-auto mb-2 object-cover border"
+                        />
+                        <p className="font-semibold text-xs text-slate-800 dark:text-white truncate">{t.full_name || "Gia sư"}</p>
+                        <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate">{t.school || "ĐH Bách Khoa"}</p>
+                        <p className="text-[10px] text-rose-600 font-semibold mt-1">{formatVND(t.hourly_rate)}/giờ</p>
+                        <button onClick={() => setViewingTutor(t)} className="bg-[#13519c] hover:bg-blue-800 text-white px-2 py-1 rounded cursor-pointer font-semibold text-[10px] mt-2 w-full">Đăng ký</button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 2: COURSES LISTING (renamed Tìm Gia Sư) */}
+              {activeTab === "courses" && (
+                <div className="space-y-6">
+                  <div className="flex justify-between items-center">
+                    <h2 className="text-base font-semibold text-slate-900 dark:text-white">Đội Ngũ GiasuTop</h2>
+                    <div className="relative max-w-[180px]">
+                      <IconSearch className="absolute left-3 top-1/2 -translate-y-1/2 h-3 w-3 text-slate-400" />
+                      <input
+                        type="text"
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        placeholder="Tìm gia sư, trường học..."
+                        className="w-full h-8 pl-8 pr-3 text-xs rounded-lg border bg-white dark:bg-slate-900 focus:outline-none focus:border-[#13519c]"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Danh mục gia sư filter inline */}
+                  <div className="bg-white dark:bg-[#111827] rounded-2xl p-4 shadow-sm border border-slate-200/60 dark:border-slate-800/80 space-y-3">
+                    <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
+                      <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Danh mục gia sư</span>
+                      {selectedGradeFilter !== "Tất cả" && (
+                        <button
+                          onClick={() => setSelectedGradeFilter("Tất cả")}
+                          className="text-[10px] text-red-650 hover:text-red-500 dark:text-red-400 font-bold transition cursor-pointer"
+                        >
+                          Xóa bộ lọc x
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        { label: "Tất cả gia sư", filter: "Tất cả", icon: <IconUser className="h-3.5 w-3.5" /> },
+                        { label: "Gia sư cấp THPT", filter: "Cấp THPT", icon: <IconGraduationCap className="h-3.5 w-3.5" /> },
+                        { label: "Gia sư cấp THCS", filter: "Cấp THCS", icon: <IconBook className="h-3.5 w-3.5" /> },
+                        { label: "Gia sư Tiểu học", filter: "Cấp Tiểu học", icon: <IconStar className="h-3.5 w-3.5" /> },
+                        { label: "Luyện thi Đại học", filter: "Luyện thi ĐH", icon: <IconZap className="h-3.5 w-3.5" /> },
+                      ].map((cat) => (
+                        <button
+                          key={cat.filter}
+                          onClick={() => setSelectedGradeFilter(cat.filter)}
+                          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-[11px] font-semibold transition cursor-pointer border ${selectedGradeFilter === cat.filter
+                            ? "bg-red-50 text-[#C41E3A] border-red-200 dark:bg-red-950/20 dark:text-red-450 dark:border-red-900/50 font-bold shadow-sm"
+                            : "bg-slate-50 dark:bg-slate-900/60 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-655 dark:text-slate-350 border-slate-100 dark:border-slate-800/60"
+                            }`}
+                        >
+                          <div className={`h-5.5 w-5.5 rounded-lg flex items-center justify-center shrink-0 transition ${selectedGradeFilter === cat.filter
+                            ? "bg-gradient-to-br from-[#C41E3A] to-[#8B0000] text-white"
+                            : "bg-red-100/80 text-[#C41E3A] dark:bg-slate-850 dark:text-red-400"
+                            }`}>
+                            {cat.icon}
+                          </div>
+                          <span>{cat.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Subject tabs filter bar */}
+                  <div className="flex border-b dark:border-slate-800 overflow-x-auto gap-2">
+                    {subjectList.map((sub) => (
+                      <button
+                        key={sub}
+                        onClick={() => setSelectedSubject(sub)}
+                        className={`pb-2.5 px-4 text-xs font-semibold cursor-pointer transition-all relative shrink-0 ${selectedSubject === sub ? "text-[#13519c] dark:text-blue-400 font-bold" : "text-slate-400 hover:text-slate-650"
+                          }`}
+                      >
+                        {sub}
+                        {selectedSubject === sub && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#13519c] dark:bg-blue-400" />}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Tutors Cards Grid */}
+                  {filteredTutors.length === 0 ? (
+                    <div className="text-center py-12 text-slate-400 text-xs bg-white dark:bg-slate-900 border rounded-xl">
+                      Chưa tìm thấy gia sư nào phù hợp với bộ lọc và điều kiện tìm kiếm.
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {filteredTutors.map((t, idx) => {
+                        const gradientClass = tutorGradients[idx % tutorGradients.length];
+                        return (
+                          <div key={t.user_id} className="bg-white dark:bg-[#111827] rounded-2xl overflow-hidden shadow-sm border border-slate-200/50 dark:border-slate-800 flex flex-col justify-between hover:scale-[1.01] transition duration-200">
+                            <div className={`p-4 ${t.card_gradient || 'bg-gradient-to-r from-blue-600 via-indigo-600 to-[#13519c]'} text-white relative h-28 flex flex-col justify-between`}>
+                              <div className="flex justify-between items-start">
+                                <span className="text-[8px] bg-black/20 px-2 py-0.5 rounded font-bold uppercase tracking-wider">GIA SƯ CHUYÊN NGHIỆP</span>
+                                <span className="text-[9px] bg-white/20 px-2 py-0.5 rounded font-semibold">{(4.7 + (t.full_name.charCodeAt(0) % 4) * 0.1).toFixed(1)} ({(t.full_name.charCodeAt(1) % 40) + 15} đánh giá)</span>
+                              </div>
+                              <h4 className="text-xs font-bold leading-tight line-clamp-2">Lớp dạy kèm: {t.subjects_to_teach.join(", ")}</h4>
+                            </div>
+                            <div className="p-4 space-y-3">
+                              <div className="flex items-center gap-3">
+                                <img
+                                  src={`https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(t.email)}`}
+                                  alt={t.full_name}
+                                  className="h-10 w-10 rounded-full border bg-slate-50 shrink-0"
+                                />
+                                <div className="min-w-0">
+                                  <h5 className="text-xs font-bold text-slate-900 dark:text-white truncate">{t.full_name}</h5>
+                                  <p className="text-[10px] text-slate-400 truncate font-semibold">{t.school} ({t.major || "Chuyên ngành"})</p>
+                                </div>
+                              </div>
+                              <p className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-3 leading-relaxed">
+                                {t.bio || "Gia sư tận tâm dạy bám sát chương trình học, giúp con củng cố kiến thức và đạt điểm tốt."}
+                              </p>
+                              <div className="pt-3 border-t dark:border-slate-800 flex justify-between items-center">
+                                <div>
+                                  <span className="block text-[9px] uppercase font-bold text-slate-400">Học phí đề xuất</span>
+                                  <span className="text-sm font-bold text-rose-600">{formatVND(t.hourly_rate)}/giờ</span>
+                                </div>
+                                <button
+                                  onClick={() => setViewingTutor(t)}
+                                  className="bg-[#13519c] hover:bg-blue-800 text-white font-bold text-xs px-4 h-9 rounded-lg cursor-pointer transition flex items-center justify-center"
+                                >
+                                  Đăng ký học ngay
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* TAB 3: DOCUMENTS REPOSITORY (Screenshot 3 layout) */}
+              {activeTab === "documents" && (
+                <div className="space-y-6">
+
+                  {/* Header title */}
+                  <div className="flex justify-between items-center">
+                    <h2 className="text-base font-semibold text-slate-900 dark:text-white">
+                      Kho Đề Thi & Tài Liệu Ôn Tập
+                    </h2>
+                    <button
+                      onClick={() => setUploadModalOpen(true)}
+                      className="bg-[#13519c] text-white hover:bg-blue-800 text-xs font-semibold px-3.5 py-2 rounded-lg cursor-pointer flex items-center gap-1.5"
+                    >
+                      <IconUpload className="h-3.5 w-3.5" />Tải tài liệu lên
+                    </button>
+                  </div>
+
+                  {/* Documents List */}
+                  {documents.length === 0 ? (
+                    <div className="text-center py-12 text-slate-400 text-xs bg-white dark:bg-slate-900 border rounded-xl">
+                      Chưa tìm thấy tài liệu phù hợp với bộ lọc này.
+                    </div>
+                  ) : (
+                    <div className="space-y-3.5">
+                      {documents.map((doc) => (
+                        <div
+                          key={doc.id}
+                          className="bg-white dark:bg-[#111827] rounded-xl p-4 shadow-sm border border-slate-200/50 dark:border-slate-850 flex items-center justify-between gap-4"
+                        >
+                          <div className="space-y-2">
+                            <div className="flex gap-1.5 flex-wrap">
+                              <span className="bg-orange-500 text-white text-[9px] font-bold px-2 py-0.5 rounded">
+                                {doc.grade_tag}
+                              </span>
+                              <span className="bg-blue-600 text-white text-[9px] font-bold px-2 py-0.5 rounded">
+                                {doc.subject_tag}
+                              </span>
+                              <span className="bg-slate-100 text-slate-600 text-[9px] font-bold px-2 py-0.5 rounded border">
+                                {doc.type_tag}
+                              </span>
+                            </div>
+                            <h4 className="text-xs font-semibold text-slate-900 dark:text-white leading-snug">
+                              {doc.title}
+                            </h4>
+                            <div className="text-[10px] text-slate-400 flex items-center gap-3">
+                              <span>👁️ {doc.download_count} Lượt tải</span>
+                              <span>📅 {new Date(doc.created_at).toLocaleDateString("vi-VN")}</span>
+                              <span>👤 Đăng bởi: {doc.uploader_name}</span>
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedDocument(doc);
+                            }}
+                            className="bg-slate-100 text-slate-700 hover:bg-[#13519c] hover:text-white text-xs px-3 h-8 rounded-lg cursor-pointer flex items-center gap-1 shrink-0 font-medium"
+                          >
+                            <IconDownload className="h-3.5 w-3.5" /> Xem / Tải
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* TAB 4: NEWS BOARD (Screenshot 5 look) */}
+              {activeTab === "news" && (
+                <div className="space-y-6">
+                  {selectedNews ? (
+                    // Detail Page View like a newspaper, not a popup modal!
+                    <div className="bg-white dark:bg-[#111827] rounded-2xl p-6 border shadow-sm space-y-6">
+                      <div className="flex justify-between items-center pb-4 border-b">
+                        <button
+                          onClick={() => setSelectedNews(null)}
+                          className="flex items-center gap-1.5 text-[#13519c] dark:text-blue-400 hover:underline font-bold text-xs"
+                        >
+                          &larr; Quay lại danh sách
+                        </button>
+                        <span className="bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-200 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">
+                          {selectedNews.category}
+                        </span>
+                      </div>
+
+                      <div className="space-y-2">
+                        <h1 className="text-xl md:text-2xl font-black text-slate-900 dark:text-white leading-snug">{selectedNews.title}</h1>
+                        <p className="text-xs text-slate-400">📅 Đăng ngày: {new Date(selectedNews.created_at).toLocaleDateString("vi-VN")} | Tác giả: GiaSu GiasuTop</p>
+                      </div>
+
+                      {selectedNews.thumbnail_url && (
+                        <img
+                          src={selectedNews.thumbnail_url}
+                          alt={selectedNews.title}
+                          className="w-full max-h-96 object-cover rounded-xl shadow mx-auto"
+                        />
+                      )}
+
+                      {selectedNews.summary && (
+                        <p className="text-xs font-semibold text-slate-650 dark:text-slate-300 bg-slate-50 dark:bg-slate-900/60 p-4 rounded-xl border-l-4 border-[#13519c] italic leading-relaxed">
+                          {selectedNews.summary}
+                        </p>
+                      )}
+
+                      <div
+                        className="text-xs text-slate-700 dark:text-slate-350 leading-relaxed space-y-4 font-sans prose dark:prose-invert max-w-none"
+                        dangerouslySetInnerHTML={{ __html: selectedNews.content }}
+                      />
+
+                      <div className="pt-4 border-t">
+                        <button
+                          onClick={() => setSelectedNews(null)}
+                          className="bg-[#13519c] text-white font-semibold text-xs px-4 py-2 rounded-lg hover:bg-blue-850 cursor-pointer shadow"
+                        >
+                          Quay lại trang danh sách
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex justify-between items-center">
+                        <h2 className="text-base font-semibold text-slate-900 dark:text-white">
+                          Tin Tức Kỳ Thi & Học Tập
+                        </h2>
+                        {token && user?.role === "ADMIN" && (
+                          <button
+                            onClick={() => {
+                              setEditingNews(null);
+                              setNewsForm({ title: "", summary: "", content: "", thumbnailUrl: "", category: "Toán" });
+                              setNewsFormOpen(true);
+                            }}
+                            className="bg-[#13519c] hover:bg-blue-800 text-white text-xs font-semibold px-3.5 py-2 rounded-lg cursor-pointer flex items-center gap-1.5 shadow"
+                          >
+                            ➕ Đăng tin mới
+                          </button>
+                        )}
+                      </div>
+
+                      {news.length === 0 ? (
+                        <div className="text-center py-12 text-slate-400 text-xs">Chưa có tin tức nào được đăng.</div>
+                      ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {news.map((item) => (
+                            <div
+                              key={item.id}
+                              className="bg-white dark:bg-[#111827] rounded-xl overflow-hidden border border-slate-200/50 dark:border-slate-800 flex shadow-sm hover:scale-[1.01] transition cursor-pointer"
+                              onClick={() => setSelectedNews(item)}
+                            >
+                              {item.thumbnail_url && (
+                                <img
+                                  src={item.thumbnail_url}
+                                  alt="News thumbnail"
+                                  className="w-24 object-cover"
+                                />
+                              )}
+                              <div className="p-3 flex-1 min-w-0 flex flex-col justify-between">
+                                <div>
+                                  <span className="text-[9px] bg-amber-500/10 text-amber-600 font-bold px-2 py-0.5 rounded">
+                                    {item.category}
+                                  </span>
+                                  <h4 className="text-xs font-semibold text-slate-900 dark:text-white truncate mt-1">
+                                    {item.title}
+                                  </h4>
+                                  <p className="text-[10px] text-slate-400 mt-1 line-clamp-2">
+                                    {item.summary || "Xem phân tích chi tiết nội dung sự kiện ngay tại đây."}
+                                  </p>
+                                </div>
+                                <span className="text-[9px] text-slate-450 block mt-2 text-right">
+                                  📅 {new Date(item.created_at).toLocaleDateString("vi-VN")}
+                                </span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* TAB 5: MY CLASSES */}
+              {activeTab === "my_courses" && (
+                <div className="space-y-6">
+
+                  {/* Header card details */}
+                  <div className="bg-white dark:bg-[#111827] rounded-xl p-5 border border-slate-200/50 shadow-sm flex items-center gap-4">
+                    <div className="h-14 w-14 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-2xl border">
+                      <svg className="h-6 w-6 text-[#13519c]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M22 10v6M2 10l10-5 10 5-10 5z" />
+                        <path d="M6 12v5c0 2 2 3 6 3s6-1 6-3v-5" />
+                      </svg>
+                    </div>
+                    <div>
+                      <h3 className="text-base font-semibold">{user?.fullName || "Khách"}</h3>
+                      <p className="text-xs text-slate-400">{user?.email || "Chưa kết nối email"}</p>
+                      <span className="text-[9px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full mt-1 uppercase">
+                        Tài khoản hoạt động
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* SECTION 1: UNPAID COURSES */}
+                  <div className="space-y-3">
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                      <span className="h-2 w-2 rounded-full bg-rose-500 animate-ping"></span>
+                      Lớp chờ đóng học phí (Cần thanh toán)
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {appointments.filter(a => a.payment_status === "UNPAID").map((appt) => (
+                        <div
+                          key={appt.id}
+                          onClick={() => { setPayingAppt(appt); setPaymentDetails(null); setPaymentComplete(false); }}
+                          className="bg-white dark:bg-[#111827] rounded-xl p-4 shadow-sm border border-slate-200 dark:border-slate-800 flex flex-col justify-between space-y-3.5 hover:scale-[1.01] transition duration-200 cursor-pointer"
+                        >
+                          <div>
+                            <div className="flex justify-between items-start">
+                              <h4 className="text-xs font-bold text-slate-955 dark:text-white truncate">Lớp với: {user?.role === "STUDENT" ? appt.tutor_name : appt.student_name}</h4>
+                              <span className="text-[9px] bg-rose-500/10 text-rose-600 font-bold px-2 py-0.5 rounded border border-rose-500/10">Chờ đóng phí</span>
+                            </div>
+                            <div className="mt-2 text-[10px] text-slate-450 space-y-1">
+                              <div>⏱️ Bắt đầu: {formatDateTimeText(appt.start_time)}</div>
+                              <div className="font-bold text-rose-600 text-xs mt-1">Học phí: {formatVND(appt.price_paid)}</div>
+                            </div>
+                          </div>
+
+                          {user?.role === "STUDENT" && (
+                            <div className="flex gap-2 pt-2 border-t dark:border-slate-800">
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); logClientActivity("INIT_PAY_VIETQR", `Mở trang thanh toán VietQR cho lớp học ${appt.id}`); const t = token || localStorage.getItem("token") || ""; window.open(`/payment?appointmentId=${appt.id}&token=${encodeURIComponent(t)}`, "_blank"); }}
+                                className="flex-1 bg-[#13519c] hover:bg-blue-800 text-white text-[10px] font-bold py-2 rounded-lg cursor-pointer transition flex items-center justify-center gap-1 shadow-sm"
+                              >
+                                <svg className="h-3 w-3 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="2" y="5" width="20" height="14" rx="2" /><line x1="2" y1="10" x2="22" y2="10" /></svg>
+                                VietQR
+                              </button>
+                              <button
+                                type="button"
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  if (wallet.available_balance >= Number(appt.price_paid)) {
+                                    if (confirm(`Xác nhận thanh toán ${formatVND(appt.price_paid)} từ ví nội bộ?`)) {
+                                      try {
+                                        const res = await fetch("http://localhost:5000/api/payments/wallet-pay", {
+                                          method: "POST",
+                                          headers: {
+                                            "Content-Type": "application/json",
+                                            Authorization: `Bearer ${token}`,
+                                          },
+                                          body: JSON.stringify({ appointmentId: appt.id }),
+                                        });
+                                        const json = await res.json();
+                                        if (json.success) {
+                                          showKntechAlert("success", "Thanh toán thành công", json.message);
+                                          logClientActivity("WALLET_PAY_APPOINTMENT", `Thanh toán học phí lớp ${appt.id} bằng ví nội bộ`);
+                                          fetchUserData();
+                                        } else {
+                                          showKntechAlert("error", "Lỗi giao dịch", json.message);
+                                        }
+                                      } catch (err) {
+                                        showKntechAlert("error", "Lỗi kết nối", "Không thể thanh toán bằng ví.");
+                                      }
+                                    }
+                                  } else {
+                                    showKntechAlert(
+                                      "warning",
+                                      "Số dư không đủ",
+                                      `Học phí yêu cầu ${formatVND(appt.price_paid)} nhưng ví nội bộ của bác chỉ còn ${formatVND(wallet.available_balance)}. Đang chuyển hướng sang ví nội bộ để nạp thêm...`
+                                    );
+                                    setTimeout(() => {
+                                      setTopupAmountInput(String(Number(appt.price_paid) - wallet.available_balance));
+                                      setActiveTab("wallet");
+                                    }, 2500);
+                                  }
+                                }}
+                                className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold py-2 rounded-lg cursor-pointer transition flex items-center justify-center gap-1 shadow-sm"
+                              >
+                                <svg className="h-3 w-3 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M20 12V8H6a2 2 0 0 1-2-2 2 2 0 0 1 2-2h14v4" /><path d="M4 6v12a2 2 0 0 0 2 2h14v-4" /><circle cx="16" cy="12" r="2" /></svg>
+                                Ví nội bộ ({formatVND(wallet.available_balance)})
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    {appointments.filter(a => a.payment_status === "UNPAID").length === 0 && (
+                      <p className="text-[11px] text-slate-400 italic">Bác không có đăng ký học nào đang chờ thanh toán.</p>
+                    )}
+                  </div>
+
+                  {/* SECTION 2: ACTIVE CLASSES */}
+                  <div className="space-y-3 pt-4 border-t dark:border-slate-800">
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                      <svg className="h-4 w-4 text-emerald-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10" /><path d="m9 12 2 2 4-4" /></svg>
+                      Lớp học đang diễn ra (Đã đóng học phí)
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {appointments.filter(a => a.payment_status === "HOLDING" || a.payment_status === "RELEASED").map((appt) => (
+                        <div key={appt.id} className="bg-white dark:bg-[#111827] rounded-xl overflow-hidden border border-slate-200/50 dark:border-slate-800 flex flex-col justify-between hover:scale-[1.01] transition duration-200">
+                          <div className="p-4 bg-gradient-to-br from-[#13519c] to-blue-700 text-white h-24 flex flex-col justify-between">
+                            <span className="text-[8px] bg-white/20 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider w-max">LỚP HỌC ĐANG DIỄN RA</span>
+                            <h4 className="text-xs font-bold leading-tight line-clamp-2">Dạy kèm cùng: {user?.role === "STUDENT" ? appt.tutor_name : appt.student_name}</h4>
+                          </div>
+                          <div className="p-3 text-[11px] flex justify-between items-center bg-slate-50 dark:bg-slate-900 border-t dark:border-slate-800">
+                            <span className="text-slate-400 font-medium truncate max-w-[150px]">Lớp 1-1 trực tuyến</span>
+                            <button onClick={() => { logClientActivity("JOIN_CLASSROOM", `Vào phòng học trực tuyến lớp ${appt.id}`); handleJoinClassroom(appt); }} className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded font-semibold text-[10px] cursor-pointer">Vào lớp học</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {appointments.filter(a => a.payment_status === "HOLDING" || a.payment_status === "RELEASED").length === 0 && (
+                      <div className="text-center py-16 bg-white dark:bg-[#111827] border rounded-xl text-slate-400 text-xs shadow-sm">
+                        Bác chưa có lớp học nào đang diễn ra. Vui lòng đặt lịch với gia sư và hoàn tất học phí để bắt đầu học.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 6: BOOKINGS */}
+              {activeTab === "bookings" && (
+                <div className="space-y-4">
+                  <h2 className="text-base font-semibold text-slate-900 dark:text-white">
+                    Lịch Học Của Con & Gia Đình
+                  </h2>
+
+                  {appointments.length === 0 ? (
+                    <div className="text-center py-16 bg-white dark:bg-[#111827] rounded-xl border text-slate-450 text-xs">
+                      Bác chưa đặt lịch học nào cho con học tập.
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {appointments.map((appt) => (
+                        <div
+                          key={appt.id}
+                          className="bg-white dark:bg-[#111827] rounded-xl p-4 shadow-sm border border-slate-200/60 dark:border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4"
+                        >
+                          <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-xs font-semibold text-slate-900 dark:text-white">
+                                🏫 Lớp học với: {user?.role === "STUDENT" ? appt.tutor_name : appt.student_name}
+                              </span>
+                              {appt.payment_status === "UNPAID" ? (
+                                <span className="bg-rose-500/10 text-rose-600 text-[10px] font-medium px-2 py-0.5 rounded-full border border-rose-500/10">
+                                  Chờ đóng học phí
+                                </span>
+                              ) : (
+                                <span className="bg-emerald-500/10 text-emerald-600 text-[10px] font-medium px-2 py-0.5 rounded-full border border-emerald-500/10">
+                                  Đã thanh toán (Holding an toàn)
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="mt-2 text-[11px] text-slate-500 space-y-1">
+                              <div>⏱️ Giờ học: <span className="font-semibold text-slate-800 dark:text-white">{formatDateTimeText(appt.start_time)}</span></div>
+                              <div>⌛ Kết thúc: <span className="font-semibold text-slate-800 dark:text-white">{formatDateTimeText(appt.end_time)}</span></div>
+                              <div className="font-semibold text-[#13519c] mt-1">
+                                Học phí: {formatVND(appt.price_paid)}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex gap-2 flex-wrap">
+                            {appt.payment_status === "UNPAID" && user?.role === "STUDENT" && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => handleInitiatePayment(appt)}
+                                  className="bg-[#13519c] text-white text-[11px] font-semibold px-4 py-2 rounded-lg hover:bg-blue-600 cursor-pointer shadow-sm"
+                                >
+                                  💳 Thanh toán VietQR
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    if (wallet.available_balance >= Number(appt.price_paid)) {
+                                      if (confirm(`Xác nhận thanh toán ${formatVND(appt.price_paid)} từ ví nội bộ?`)) {
+                                        try {
+                                          const res = await fetch("http://localhost:5000/api/payments/wallet-pay", {
+                                            method: "POST",
+                                            headers: {
+                                              "Content-Type": "application/json",
+                                              Authorization: `Bearer ${token}`,
+                                            },
+                                            body: JSON.stringify({ appointmentId: appt.id }),
+                                          });
+                                          const json = await res.json();
+                                          if (json.success) {
+                                            showKntechAlert("success", "Thanh toán thành công", json.message);
+                                            fetchUserData();
+                                          } else {
+                                            showKntechAlert("error", "Lỗi giao dịch", json.message);
+                                          }
+                                        } catch (e) {
+                                          showKntechAlert("error", "Lỗi kết nối", "Không thể thanh toán bằng ví.");
+                                        }
+                                      }
+                                    } else {
+                                      showKntechAlert(
+                                        "warning",
+                                        "Số dư không đủ",
+                                        `Học phí yêu cầu ${formatVND(appt.price_paid)} nhưng ví nội bộ của bác chỉ còn ${formatVND(wallet.available_balance)}. Đang chuyển hướng sang ví nội bộ để nạp thêm...`
+                                      );
+                                      setTimeout(() => {
+                                        setTopupAmountInput(String(Number(appt.price_paid) - wallet.available_balance));
+                                        setActiveTab("wallet");
+                                      }, 2500);
+                                    }
+                                  }}
+                                  className="bg-emerald-600 text-white text-[11px] font-semibold px-4 py-2 rounded-lg hover:bg-emerald-700 cursor-pointer shadow-sm"
+                                >
+                                  👛 Ví nội bộ ({formatVND(wallet.available_balance)})
+                                </button>
+                              </>
+                            )}
+                            {appt.payment_status === "HOLDING" && (
+                              <button
+                                type="button"
+                                onClick={() => handleJoinClassroom(appt)}
+                                className="bg-emerald-600 text-white text-[11px] font-semibold px-4 py-2 rounded-lg hover:bg-emerald-700 flex items-center gap-1.5 cursor-pointer"
+                              >
+                                💻 Vào lớp học
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* TAB 7: WALLET */}
+              {activeTab === "wallet" && (
+                <div className="space-y-6">
+                  <h2 className="text-base font-semibold text-slate-900 dark:text-white">
+                    Ví Tiền Nội Bộ GiasuTop
+                  </h2>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="bg-gradient-to-br from-[#13519c] to-blue-700 text-white rounded-xl p-5 shadow-sm">
+                      <span className="text-[10px] font-semibold opacity-80 uppercase tracking-wider">Số dư khả dụng</span>
+                      <div className="text-2xl font-bold mt-2">{formatVND(wallet.available_balance)}</div>
+                    </div>
+
+                    <div className="bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-sm">
+                      <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Đang giữ bảo đảm (Holding)</span>
+                      <div className="text-2xl font-bold mt-2 text-slate-700 dark:text-white">{formatVND(wallet.holding_balance)}</div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Form Nạp Tiền */}
+                    <div className="bg-white dark:bg-[#111827] p-5 border border-slate-200 dark:border-slate-850 rounded-xl shadow-sm space-y-4">
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-slate-450">Nạp tiền vào ví (Giả lập)</h3>
+                      <form onSubmit={handleWebTopup} className="space-y-3">
+                        <div>
+                          <label className="block text-[10px] font-semibold text-slate-400 mb-1">Số tiền nạp (VND)</label>
+                          <input
+                            type="number"
+                            value={topupAmountInput}
+                            onChange={(e) => setTopupAmountInput(e.target.value)}
+                            placeholder="Nhập số tiền muốn nạp..."
+                            className="w-full h-9 px-3 text-xs rounded-lg border bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 focus:outline-none"
+                            required
+                          />
+                        </div>
+                        <button
+                          type="submit"
+                          className="w-full bg-[#13519c] hover:bg-blue-800 text-white font-bold text-xs py-2 rounded-lg cursor-pointer transition shadow-sm"
+                        >
+                          Nạp tiền ngay
+                        </button>
+                      </form>
+                    </div>
+
+                    {/* Form Rút Tiền */}
+                    <div className="bg-white dark:bg-[#111827] p-5 border border-slate-200 dark:border-slate-850 rounded-xl shadow-sm space-y-4">
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-slate-450">Yêu cầu rút tiền</h3>
+                      <form onSubmit={handleWebWithdraw} className="space-y-3">
+                        <div>
+                          <label className="block text-[10px] font-semibold text-slate-400 mb-1">Số tiền rút (VND)</label>
+                          <input
+                            type="number"
+                            value={withdrawAmountInput}
+                            onChange={(e) => setWithdrawAmountInput(e.target.value)}
+                            placeholder="Nhập số tiền muốn rút..."
+                            className="w-full h-9 px-3 text-xs rounded-lg border bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 focus:outline-none"
+                            required
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-[10px] font-semibold text-slate-400 mb-1">Số tài khoản</label>
+                            <input
+                              type="text"
+                              value={bankNoInput}
+                              onChange={(e) => setBankNoInput(e.target.value)}
+                              placeholder="Số tài khoản..."
+                              className="w-full h-9 px-3 text-xs rounded-lg border bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 focus:outline-none"
+                              required
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-semibold text-slate-400 mb-1">Tên chủ tài khoản</label>
+                            <input
+                              type="text"
+                              value={bankNameInput}
+                              onChange={(e) => setBankNameInput(e.target.value)}
+                              placeholder="Tên người nhận..."
+                              className="w-full h-9 px-3 text-xs rounded-lg border bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 focus:outline-none"
+                              required
+                            />
+                          </div>
+                        </div>
+                        <button
+                          type="submit"
+                          className="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs py-2 rounded-lg cursor-pointer transition shadow-sm"
+                        >
+                          Gửi yêu cầu rút tiền
+                        </button>
+                      </form>
+                    </div>
+                  </div>
+
+                  {/* Lịch sử giao dịch */}
+                  <div className="bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-sm space-y-4">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-slate-450">Lịch sử giao dịch ví</h3>
+                    <div className="overflow-x-auto border border-slate-200/60 dark:border-slate-800 rounded-xl">
+                      <table className="w-full border-collapse text-left text-xs">
+                        <thead>
+                          <tr className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                            <th className="px-4 py-3">Ngày giao dịch</th>
+                            <th className="px-4 py-3">Loại giao dịch</th>
+                            <th className="px-4 py-3">Mã tham chiếu</th>
+                            <th className="px-4 py-3 text-right">Số tiền</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-150 dark:divide-slate-800 font-mono text-[11px]">
+                          {walletLedger.length === 0 ? (
+                            <tr>
+                              <td colSpan={4} className="px-4 py-6 text-center text-slate-400 font-sans">Chưa có lịch sử giao dịch.</td>
+                            </tr>
+                          ) : (
+                            walletLedger.map((l) => (
+                              <tr key={l.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/40 transition">
+                                <td className="px-4 py-2.5 text-slate-400">{new Date(l.created_at).toLocaleString("vi-VN")}</td>
+                                <td className="px-4 py-2.5 font-sans font-semibold">{l.entry_type}</td>
+                                <td className="px-4 py-2.5 text-slate-550">{l.ref_id}</td>
+                                <td className={`px-4 py-2.5 text-right font-bold ${l.amount > 0 ? "text-emerald-600" : "text-rose-600"}`}>
+                                  {l.amount > 0 ? "+" : ""}{formatVND(l.amount)}
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 8: ADMIN CONTROL PANEL */}
+              {activeTab === "admin" && user?.role === "ADMIN" && (
+                <div className="space-y-6">
+
+                  {/* Sub Menu tabs */}
+                  <div className="flex border-b border-slate-200 dark:border-slate-800 overflow-x-auto gap-2">
+                    <button
+                      onClick={() => setAdminTab("subjects")}
+                      className={`pb-3 text-xs font-semibold px-3 cursor-pointer shrink-0 transition relative ${adminTab === "subjects" ? "text-[#13519c]" : "text-slate-400 hover:text-slate-650"
+                        }`}
+                    >
+                      📚 Môn Học
+                    </button>
+
+                    <button
+                      onClick={() => setAdminTab("tutors")}
+                      className={`pb-3 text-xs font-semibold px-3 cursor-pointer shrink-0 transition relative ${adminTab === "tutors" ? "text-[#13519c]" : "text-slate-400 hover:text-slate-650"
+                        }`}
+                    >
+                      👩‍🏫 Duyệt Giáo Viên ({pendingTutors.length})
+                    </button>
+
+                    <button
+                      onClick={() => setAdminTab("pending_docs")}
+                      className={`pb-3 text-xs font-semibold px-3 cursor-pointer shrink-0 transition relative ${adminTab === "pending_docs" ? "text-[#13519c]" : "text-slate-400 hover:text-slate-650"
+                        }`}
+                    >
+                      📁 Duyệt Tài Liệu ({pendingDocs.length})
+                    </button>
+
+                    <button
+                      onClick={() => setAdminTab("news_crud")}
+                      className={`pb-3 text-xs font-semibold px-3 cursor-pointer shrink-0 transition relative ${adminTab === "news_crud" ? "text-[#13519c]" : "text-slate-400 hover:text-slate-650"
+                        }`}
+                    >
+                      📰 Quản Lý Tin Tức
+                    </button>
+
+                    <button
+                      onClick={() => setAdminTab("monitor")}
+                      className={`pb-3 text-xs font-semibold px-3 cursor-pointer shrink-0 transition relative ${adminTab === "monitor" ? "text-[#13519c]" : "text-slate-400 hover:text-slate-650"
+                        }`}
+                    >
+                      🖥️ Hệ Thống Logs
+                    </button>
+
+                    <button
+                      onClick={() => setAdminTab("users")}
+                      className={`pb-3 text-xs font-semibold px-3 cursor-pointer shrink-0 transition relative ${adminTab === "users" ? "text-[#13519c]" : "text-slate-400 hover:text-slate-650"
+                        }`}
+                    >
+                      👥 Người Dùng
+                    </button>
+
+                    <button
+                      onClick={() => { setAdminTab("commissions"); fetchPendingCommissions(); }}
+                      className={`pb-3 text-xs font-semibold px-3 cursor-pointer shrink-0 transition relative ${adminTab === "commissions" ? "text-[#13519c]" : "text-slate-400 hover:text-slate-650"
+                        }`}
+                    >
+                      🤝 Duyệt Deal Hoa Hồng ({pendingCommissions.length})
+                    </button>
+                  </div>
+
+                  {/* Sub-tab: Subjects CRUD */}
+                  {adminTab === "subjects" && (
+                    <div className="bg-white dark:bg-[#111827] rounded-xl p-4 shadow-sm border border-slate-200 space-y-4">
+                      <form onSubmit={handleAddOrEditSubject} className="flex gap-2">
+                        <input
+                          type="text"
+                          placeholder="Nhập tên môn học..."
+                          value={subjectNameInput}
+                          onChange={(e) => setSubjectNameInput(e.target.value)}
+                          className="flex-1 h-9 px-3 text-xs rounded-lg border bg-white"
+                        />
+                        <button type="submit" className="bg-[#13519c] text-white text-xs font-semibold px-4 rounded-lg cursor-pointer">
+                          Lưu môn
+                        </button>
+                      </form>
+
+                      <div className="overflow-x-auto border border-slate-200/60 dark:border-slate-800 rounded-xl bg-white dark:bg-[#111827] shadow-sm">
+                        <table className="w-full border-collapse text-left text-xs">
+                          <thead>
+                            <tr className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                              <th className="px-4 py-3">ID</th>
+                              <th className="px-4 py-3">Tên Môn Học</th>
+                              <th className="px-4 py-3 text-right">Hành Động</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-150 dark:divide-slate-800">
+                            {dbSubjects.map((s) => (
+                              <tr key={s.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/40 transition">
+                                <td className="px-4 py-3 text-slate-400 font-mono">#{s.id}</td>
+                                <td className="px-4 py-3 font-semibold text-slate-700 dark:text-slate-200">{s.name}</td>
+                                <td className="px-4 py-3 text-right space-x-2">
+                                  <button type="button" onClick={() => { setEditingSubject(s); setSubjectNameInput(s.name); }} className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition cursor-pointer">
+                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" /></svg>
+                                    Sửa
+                                  </button>
+                                  <button type="button" onClick={() => handleDeleteSubject(s.id)} className="inline-flex items-center gap-1 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:text-rose-800 dark:hover:text-rose-350 transition cursor-pointer">
+                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                    Xóa
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Sub-tab: Document approval */}
+                  {adminTab === "pending_docs" && (
+                    <div className="bg-white dark:bg-[#111827] rounded-xl p-4 shadow-sm border space-y-4 text-xs">
+                      <h3 className="font-semibold text-sm">Tài liệu chờ duyệt</h3>
+                      {loadingPendingDocs ? (
+                        <div>Đang tải tài liệu...</div>
+                      ) : pendingDocs.length === 0 ? (
+                        <div className="text-slate-400 text-center py-4">Không có tài liệu nào chờ phê duyệt.</div>
+                      ) : (
+                        <div className="space-y-4">
+                          {pendingDocs.map((doc) => (
+                            <div key={doc.id} className="p-3 border rounded-lg bg-slate-50/40 flex justify-between items-center">
+                              <div>
+                                <h4 className="font-semibold text-slate-900">{doc.title}</h4>
+                                <p className="text-[10px] text-slate-400 mt-1">Lớp: {doc.grade_tag} | Môn: {doc.subject_tag} | Loại: {doc.type_tag}</p>
+                                <p className="text-[10px] text-slate-400">Tải lên bởi: {doc.uploader_name} | URL: {doc.file_url}</p>
+                              </div>
+                              <div className="flex gap-2">
+                                <button onClick={() => handleDecideDocument(doc.id, "APPROVED")} className="bg-emerald-600 text-white px-3 py-1.5 rounded cursor-pointer">Phê duyệt</button>
+                                <button onClick={() => handleDecideDocument(doc.id, "REJECTED")} className="bg-rose-600 text-white px-3 py-1.5 rounded cursor-pointer">Từ chối</button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Sub-tab: News CRUD */}
+                  {adminTab === "news_crud" && (
+                    <div className="bg-white dark:bg-[#111827] rounded-xl p-4 shadow-sm border space-y-4 text-xs">
+                      <div className="flex justify-between items-center">
+                        <h3 className="font-semibold text-sm">Quản lý tin tức hệ thống</h3>
+                        <button
+                          onClick={() => {
+                            setEditingNews(null);
+                            setNewsForm({ title: "", summary: "", content: "", thumbnailUrl: "", category: "Toán" });
+                            setNewsFormOpen(true);
+                          }}
+                          className="bg-[#13519c] hover:bg-blue-800 text-white text-xs font-semibold px-4 py-2 rounded-lg cursor-pointer transition shadow"
+                        >
+                          Thêm bài tin mới
+                        </button>
+                      </div>
+
+                      <div className="overflow-x-auto border border-slate-200/60 dark:border-slate-800 rounded-xl bg-white dark:bg-[#111827] shadow-sm">
+                        <table className="w-full border-collapse text-left text-xs">
+                          <thead>
+                            <tr className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                              <th className="px-4 py-3">Tiêu đề</th>
+                              <th className="px-4 py-3">Danh mục</th>
+                              <th className="px-4 py-3">Ngày đăng</th>
+                              <th className="px-4 py-3 text-right">Thao tác</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-150 dark:divide-slate-800">
+                            {news.map((item) => (
+                              <tr key={item.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/40 transition">
+                                <td className="px-4 py-3 font-semibold text-slate-700 dark:text-slate-200 truncate max-w-[240px]" title={item.title}>{item.title}</td>
+                                <td className="px-4 py-3"><span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 font-bold">{item.category}</span></td>
+                                <td className="px-4 py-3 text-slate-500">{new Date(item.created_at).toLocaleDateString("vi-VN")}</td>
+                                <td className="px-4 py-3 text-right space-x-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setEditingNews(item);
+                                      setNewsForm({
+                                        title: item.title,
+                                        summary: item.summary || "",
+                                        content: item.content,
+                                        thumbnailUrl: item.thumbnail_url || "",
+                                        category: item.category
+                                      });
+                                      setNewsFormOpen(true);
+                                    }}
+                                    className="inline-flex items-center gap-0.5 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                                  >
+                                    Sửa
+                                  </button>
+                                  <button type="button" onClick={() => handleDeleteNews(item.id)} className="inline-flex items-center gap-0.5 text-xs font-semibold text-red-500 hover:underline cursor-pointer">Xóa</button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Sub-tab: Pending Tutors */}
+                  {adminTab === "tutors" && (
+                    <div className="bg-white dark:bg-[#111827] rounded-xl p-4 border space-y-4 text-xs">
+                      <h3 className="font-semibold text-sm">Gia sư cần duyệt hồ sơ</h3>
+                      {loadingPending ? (
+                        <div>Đang tải hồ sơ...</div>
+                      ) : pendingTutors.length === 0 ? (
+                        <div className="text-slate-400 text-center py-4">Không có gia sư nào đang chờ phê duyệt.</div>
+                      ) : (
+                        <div className="space-y-4">
+                          {pendingTutors.map((pt) => (
+                            <div key={pt.user_id} className="p-4 rounded-xl border bg-slate-50/40 space-y-3">
+                              <div className="flex items-center gap-3">
+                                <img src={`https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(pt.email)}`} alt="avatar" className="h-9 w-9 rounded-full" />
+                                <div>
+                                  <h4 className="font-semibold">{pt.full_name}</h4>
+                                  <p className="text-[10px] text-slate-400">{pt.email} | {pt.phone}</p>
+                                </div>
+                              </div>
+                              <div className="grid grid-cols-2 gap-2 text-[10px]">
+                                <div>Trường: {pt.school}</div>
+                                <div>Chuyên ngành: {pt.major} ({pt.year_of_study})</div>
+                                <div>Môn dạy: {pt.subjects_to_teach}</div>
+                                <div>Phí: {formatVND(pt.hourly_rate)}/giờ</div>
+                              </div>
+                              <div className="text-[10px] p-2 bg-white rounded border">
+                                <span className="font-semibold text-slate-500">Giới thiệu:</span> {pt.bio}
+                              </div>
+
+                              {pt.documents && pt.documents.length > 0 && (
+                                <div className="space-y-1.5 border-t pt-2">
+                                  <span className="font-semibold text-slate-500 text-[9px] uppercase tracking-wider block">Minh chứng & CCCD 2 mặt đính kèm:</span>
+                                  <div className="grid grid-cols-3 gap-2">
+                                    {pt.documents.map((d: any, idx: number) => (
+                                      <div key={idx} className="space-y-1 bg-white dark:bg-slate-900 p-1.5 rounded border dark:border-slate-800">
+                                        <span className="text-[8px] font-bold uppercase text-slate-400 block truncate">
+                                          {d.doc_type === "CCCD_FRONT" ? "🪪 CCCD Mặt Trước" : d.doc_type === "CCCD_BACK" ? "🪪 CCCD Mặt Sau" : "🎓 Bằng Cấp / Thẻ SV"}
+                                        </span>
+                                        <a href={d.url} target="_blank" rel="noreferrer" className="block relative group overflow-hidden rounded bg-slate-100 dark:bg-slate-950">
+                                          <img src={d.url} alt={d.doc_type} className="h-14 w-full object-cover rounded hover:scale-105 transition duration-200" />
+                                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-[7px] text-white font-bold">MỞ 🔎</div>
+                                        </a>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              <div className="flex gap-2 justify-end pt-2 border-t">
+                                <button onClick={() => handleDecideTutor(pt.user_id, "APPROVED")} className="bg-emerald-600 text-white px-3 py-1.5 rounded cursor-pointer">Duyệt hồ sơ</button>
+                                <button onClick={() => setRejectingTutorId(pt.user_id)} className="bg-rose-600 text-white px-3 py-1.5 rounded cursor-pointer">Từ chối</button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Sub-tab: Monitor system logs */}
+                  {adminTab === "monitor" && (
+                    <div className="space-y-4 text-xs">
+                      {/* Performance metrics */}
+                      <div className="grid grid-cols-3 gap-3">
+                        <div className="bg-white p-3 border rounded-xl">
+                          <div className="text-[10px] uppercase text-slate-400">Bộ nhớ RAM</div>
+                          {systemStats && <div className="mt-1 font-semibold text-slate-900">{systemStats.memory.used} / {systemStats.memory.total}</div>}
+                        </div>
+                        <div className="bg-white p-3 border rounded-xl">
+                          <div className="text-[10px] uppercase text-slate-400">Tải CPU</div>
+                          {systemStats && <div className="mt-1 font-semibold text-slate-900">{systemStats.cpu.loadAvg}</div>}
+                        </div>
+                        <div className="bg-white p-3 border rounded-xl">
+                          <div className="text-[10px] uppercase text-slate-400">Thành viên hệ thống</div>
+                          {systemStats && <div className="mt-1 font-semibold text-slate-900">{systemStats.stats.users} Users</div>}
+                        </div>
+                      </div>
+
+                      {/* Logs list */}
+                      <div className="bg-white p-4 border rounded-xl space-y-3">
+                        <div className="flex justify-between items-center font-semibold">
+                          <span>Lịch sử log hành vi & request API</span>
+                          <button onClick={() => { fetchSystemLogs(); fetchSystemStats(); }} className="text-blue-600 hover:underline">Tải lại</button>
+                        </div>
+
+                        <div className="max-h-60 overflow-y-auto">
+                          <div className="overflow-x-auto border border-slate-200/60 dark:border-slate-800 rounded-xl bg-white dark:bg-[#111827] shadow-sm">
+                            <table className="w-full border-collapse text-left font-mono text-[10px]">
+                              <thead>
+                                <tr className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                                  <th className="px-4 py-3">Time</th>
+                                  <th className="px-4 py-3">IP Address</th>
+                                  <th className="px-4 py-3">Action</th>
+                                  <th className="px-4 py-3">Details</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-150 dark:divide-slate-800">
+                                {systemLogs.map((l) => (
+                                  <tr key={l.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/40 transition">
+                                    <td className="px-4 py-2.5 text-slate-400">{new Date(l.created_at).toLocaleTimeString()}</td>
+                                    <td className="px-4 py-2.5 text-slate-500">{l.ip}</td>
+                                    <td className="px-4 py-2.5">
+                                      <span className="px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 font-semibold text-[9px]">
+                                        {l.action}
+                                      </span>
+                                    </td>
+                                    <td className="px-4 py-2.5 text-slate-600 dark:text-slate-350 truncate max-w-[240px]" title={l.details || ""}>{l.details}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Sub-tab: Users management */}
+                  {adminTab === "users" && (
+                    <div className="bg-white dark:bg-[#111827] rounded-xl p-4 shadow-sm border border-slate-200/60 dark:border-slate-800/80 space-y-4">
+                      <div className="flex justify-between items-center">
+                        <h3 className="font-semibold text-sm text-slate-800 dark:text-slate-200">
+                          👥 Danh sách tài khoản người dùng
+                        </h3>
+                        <button
+                          onClick={fetchSystemUsers}
+                          className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition inline-flex items-center gap-1 cursor-pointer"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
+                          Làm mới
+                        </button>
+                      </div>
+
+                      <div className="overflow-hidden border border-slate-200/60 dark:border-slate-800 rounded-xl bg-white dark:bg-[#111827] shadow-sm">
+                        <div className="overflow-x-auto">
+                          <table className="w-full border-collapse text-left text-xs">
+                            <thead>
+                              <tr className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                                <th className="px-4 py-3">Họ tên / Email</th>
+                                <th className="px-4 py-3">Vai trò</th>
+                                <th className="px-4 py-3">Trạng thái</th>
+                                <th className="px-4 py-3 text-right">Hành động</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-150 dark:divide-slate-850">
+                              {systemUsers.map((u) => {
+                                // Define role and status badges
+                                let roleBadge = "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300";
+                                if (u.role === "ADMIN") {
+                                  roleBadge = "bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300 border border-purple-200/40 dark:border-purple-900/30";
+                                } else if (u.role === "TUTOR") {
+                                  roleBadge = "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200/40 dark:border-emerald-900/30";
+                                } else if (u.role === "STUDENT") {
+                                  roleBadge = "bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 border border-blue-200/40 dark:border-blue-900/30";
+                                }
+
+                                let statusBadge = "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300";
+                                if (u.status === "ACTIVE") {
+                                  statusBadge = "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200/40 dark:border-emerald-900/30";
+                                } else if (u.status === "BANNED") {
+                                  statusBadge = "bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 border border-rose-200/40 dark:border-rose-900/30";
+                                }
+
+                                return (
+                                  <tr key={u.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/40 transition">
+                                    <td className="px-4 py-3">
+                                      <div className="font-semibold text-slate-700 dark:text-slate-200">{u.full_name}</div>
+                                      <div className="text-[10px] text-slate-400 font-mono mt-0.5">{u.email}</div>
+                                    </td>
+                                    <td className="px-4 py-3">
+                                      <span className={`px-2 py-0.5 rounded-full font-semibold text-[10px] ${roleBadge}`}>
+                                        {u.role}
+                                      </span>
+                                    </td>
+                                    <td className="px-4 py-3">
+                                      <span className={`px-2 py-0.5 rounded-full font-semibold text-[10px] ${statusBadge}`}>
+                                        {u.status}
+                                      </span>
+                                    </td>
+                                    <td className="px-4 py-3 text-right">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleEditUserClick(u)}
+                                        className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition cursor-pointer"
+                                      >
+                                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" /></svg>
+                                        Sửa
+                                      </button>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {adminTab === "commissions" && (
+                    <div className="bg-white dark:bg-[#111827] rounded-xl p-4 shadow-sm border border-slate-200 dark:border-slate-800 space-y-4 text-xs">
+                      <div className="flex justify-between items-center">
+                        <h3 className="font-semibold text-sm">Phê duyệt Deal Chiết Khấu / Hoa Hồng Giáo Viên</h3>
+                        <button onClick={fetchPendingCommissions} className="text-blue-600 hover:underline font-semibold">Làm mới</button>
+                      </div>
+
+                      {loadingCommissions ? (
+                        <div className="text-slate-400">Đang tải danh sách...</div>
+                      ) : pendingCommissions.length === 0 ? (
+                        <div className="text-slate-400 text-center py-4">Không có đề xuất chiết khấu nào đang chờ phê duyệt.</div>
+                      ) : (
+                        <div className="overflow-hidden border border-slate-200/60 dark:border-slate-800 rounded-xl bg-white dark:bg-[#111827] shadow-sm">
+                          <table className="w-full border-collapse text-left text-xs">
+                            <thead>
+                              <tr className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                                <th className="px-4 py-3">Gia sư</th>
+                                <th className="px-4 py-3">Email</th>
+                                <th className="px-4 py-3">Chiết khấu hiện tại</th>
+                                <th className="px-4 py-3">Đề xuất mới</th>
+                                <th className="px-4 py-3 text-right">Hành động</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-150 dark:divide-slate-800">
+                              {pendingCommissions.map((pc) => (
+                                <tr key={pc.user_id} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/40 transition">
+                                  <td className="px-4 py-3 font-semibold text-slate-700 dark:text-slate-200">{pc.full_name}</td>
+                                  <td className="px-4 py-3 text-slate-500">{pc.email}</td>
+                                  <td className="px-4 py-3 font-mono text-slate-600 dark:text-slate-400">{pc.commission_percent}%</td>
+                                  <td className="px-4 py-3 font-mono font-bold text-indigo-600 dark:text-indigo-400">{pc.proposed_commission_percent}%</td>
+                                  <td className="px-4 py-3 text-right space-x-2">
+                                    <button
+                                      onClick={() => handleDecideCommission(pc.user_id, "APPROVED")}
+                                      className="bg-emerald-600 hover:bg-emerald-750 text-white px-2.5 py-1 rounded text-[10px] font-bold cursor-pointer"
+                                    >
+                                      Duyệt
+                                    </button>
+                                    <button
+                                      onClick={() => handleDecideCommission(pc.user_id, "REJECTED")}
+                                      className="bg-rose-600 hover:bg-rose-750 text-white px-2.5 py-1 rounded text-[10px] font-bold cursor-pointer"
+                                    >
+                                      Từ chối
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                </div>
+              )}
+
+              {/* TAB 9: PROFILE (View/Edit My Profile or View Tutor Profile) */}
+              {activeTab === "profile" && (
+                <div className="space-y-6 pb-20 md:pb-0">
+                  {tutorProfileToView ? (
+                    <div className="bg-white dark:bg-slate-900 rounded-2xl shadow p-5 animate-fade-in relative">
+                      <button onClick={() => setTutorProfileToView(null)} className="absolute top-4 right-4 h-8 w-8 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-200 cursor-pointer">
+                        ✕
+                      </button>
+                      <div className="flex flex-col items-center gap-4 text-center mt-4">
+                        <img src={`https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(tutorProfileToView.email)}`} className="w-24 h-24 rounded-full border-4 border-blue-500 bg-slate-50" alt="" />
+                        <div>
+                          <h2 className="text-xl font-bold flex items-center justify-center gap-1.5 dark:text-white">{tutorProfileToView.full_name} <span className="text-[10px] bg-emerald-100 text-emerald-700 font-bold px-2 py-0.5 rounded-full">✓ Đã xác minh</span></h2>
+                          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{tutorProfileToView.school} • {tutorProfileToView.major}</p>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4 mt-6">
+                        <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl text-center border border-slate-100 dark:border-slate-700">
+                          <span className="text-xs uppercase font-bold text-slate-400">Học phí</span>
+                          <div className="text-base font-black text-rose-600 mt-1">{formatVND(tutorProfileToView.hourly_rate)}/h</div>
+                        </div>
+                        <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl text-center border border-slate-100 dark:border-slate-700">
+                          <span className="text-xs uppercase font-bold text-slate-400">Đánh giá</span>
+                          <div className="text-base font-black text-amber-500 mt-1">⭐ {(4.7 + (tutorProfileToView.full_name.charCodeAt(0) % 4) * 0.1).toFixed(1)} ({(tutorProfileToView.full_name.charCodeAt(1) % 40) + 15})</div>
+                        </div>
+                      </div>
+                      
+                      <div className="mt-6">
+                        <h3 className="font-bold mb-2 dark:text-white">Giới thiệu bản thân</h3>
+                        <p className="text-sm text-slate-600 dark:text-slate-350 bg-slate-50 dark:bg-slate-800 p-4 rounded-xl leading-relaxed whitespace-pre-line border border-slate-100 dark:border-slate-700">{tutorProfileToView.bio || "Chưa có thông tin giới thiệu."}</p>
+                      </div>
+
+                      <div className="mt-6">
+                        <h3 className="font-bold mb-4 flex items-center gap-2 dark:text-white"><i className="fa-solid fa-star text-amber-500"></i> Đánh giá từ học viên</h3>
+                        <div className="space-y-4">
+                          <div className="bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 p-4 rounded-xl">
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="flex items-center gap-2">
+                                <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=HsTuan" className="w-6 h-6 bg-white rounded-full" alt="" />
+                                <span className="font-bold text-sm dark:text-white">HS. Nguyễn Tuấn</span>
+                              </div>
+                              <span className="text-amber-500 text-xs tracking-widest">⭐⭐⭐⭐⭐</span>
+                            </div>
+                            <p className="text-xs text-slate-600 dark:text-slate-350">Gia sư dạy rất dễ hiểu, con mình học tiến bộ hẳn sau 1 tháng.</p>
+                          </div>
+                          <div className="bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 p-4 rounded-xl">
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="flex items-center gap-2">
+                                <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=HsMai" className="w-6 h-6 bg-white rounded-full" alt="" />
+                                <span className="font-bold text-sm dark:text-white">HS. Phạm Mai</span>
+                              </div>
+                              <span className="text-amber-500 text-xs tracking-widest">⭐⭐⭐⭐⭐</span>
+                            </div>
+                            <p className="text-xs text-slate-600 dark:text-slate-350">Thầy siêu nhiệt tình luôn ạ, cho bài tập cũng vừa sức.</p>
+                          </div>
+                        </div>
+
+                        {user && user.role === "STUDENT" && (
+                          <div className="mt-6 pt-6 border-t border-slate-100 dark:border-slate-800">
+                            <h4 className="font-bold text-sm mb-3 dark:text-white">Viết đánh giá của bạn</h4>
+                            <div className="flex gap-2 mb-3">
+                              {[1,2,3,4,5].map(star => <i key={star} className="fa-solid fa-star text-slate-300 hover:text-amber-500 cursor-pointer text-xl hover:scale-110 transition-transform"></i>)}
+                            </div>
+                            <textarea placeholder="Nhập cảm nhận của bạn về gia sư..." className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none h-24 dark:text-white placeholder-slate-400"></textarea>
+                            <button className="mt-3 bg-[#13519c] text-white px-6 py-2.5 rounded-lg font-bold text-sm hover:bg-blue-800 transition shadow flex items-center gap-2">
+                              <i className="fa-regular fa-paper-plane"></i> Gửi đánh giá
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ) : user ? (
+                    <div className="bg-white dark:bg-slate-900 rounded-2xl shadow p-5 md:p-8 animate-fade-in">
+                      <h2 className="text-xl font-bold mb-6 dark:text-white">Hồ sơ cá nhân</h2>
+                      <div className="flex flex-col md:flex-row gap-8">
+                        <div className="flex flex-col items-center gap-4 md:w-1/3">
+                          <div className="relative">
+                            <img src={`https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(user.email)}`} className="w-32 h-32 rounded-full bg-slate-100 border-4 border-white shadow-lg" alt="Avatar" />
+                            <button className="absolute bottom-0 right-0 bg-[#13519c] text-white p-2 rounded-full shadow hover:bg-blue-800 cursor-pointer">
+                              <i className="fa-solid fa-camera"></i>
+                            </button>
+                          </div>
+                          <div className="text-center">
+                            <div className="font-bold text-lg dark:text-white">{user.fullName}</div>
+                            <div className="text-xs font-semibold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-md mt-1 inline-block">Vai trò: {user.role === "TUTOR" ? "Gia Sư" : user.role === "STUDENT" ? "Học Sinh / Phụ Huynh" : "Quản Trị Viên"}</div>
+                          </div>
+                        </div>
+                        <div className="flex-1 space-y-5 bg-slate-50 dark:bg-slate-800/50 p-6 rounded-2xl border border-slate-100 dark:border-slate-700">
+                          <div>
+                            <label className="block text-xs font-bold text-slate-400 uppercase mb-1.5">Họ và tên</label>
+                            <input type="text" defaultValue={user.fullName} className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-white" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-slate-400 uppercase mb-1.5">Email (Không thể đổi)</label>
+                            <input type="text" defaultValue={user.email} disabled className="w-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500 rounded-xl px-4 py-3 text-sm font-semibold cursor-not-allowed" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-slate-400 uppercase mb-1.5">Số điện thoại</label>
+                            <input type="text" placeholder="Chưa cập nhật" className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-white" />
+                          </div>
+                          <div className="pt-2">
+                            <button onClick={() => showKntechAlert("success", "Thành công", "Đã lưu thay đổi hồ sơ cá nhân!")} className="w-full md:w-auto bg-[#13519c] text-white px-8 py-3 rounded-xl font-bold text-sm hover:bg-blue-800 transition shadow-lg flex items-center justify-center gap-2">
+                              <i className="fa-solid fa-floppy-disk"></i> Lưu thay đổi
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="bg-white dark:bg-slate-900 rounded-2xl shadow p-10 text-center animate-fade-in border border-slate-100 dark:border-slate-800 mt-10 max-w-md mx-auto">
+                      <img src="https://i.ibb.co/NdgYx2Fy/Gemini-Generated-Image-89azsx89azsx89az.png" alt="Logo" className="w-24 h-24 mx-auto rounded-3xl mb-6 shadow-md" />
+                      <h2 className="text-2xl font-bold mb-3 dark:text-white">Bạn chưa đăng nhập</h2>
+                      <p className="text-sm text-slate-500 dark:text-slate-400 mb-8 leading-relaxed">Vui lòng đăng nhập hoặc tạo tài khoản mới để trải nghiệm đầy đủ các tính năng cá nhân hóa của GiasuTop.</p>
+                      <button onClick={() => openAuth("login")} className="w-full bg-[#13519c] text-white px-8 py-3.5 rounded-xl font-bold hover:bg-blue-800 transition shadow-[0_8px_20px_rgba(19,81,156,0.3)]">
+                        Đăng nhập / Đăng ký ngay
+                      </button>
+                    </div>
+                  )}
+              )}
+
+        </aside>
+
+        {/* Footer - cuộn tự nhiên ở cuối main, không đè chồng */}
+          <footer className="mt-12 border-t border-slate-200/60 dark:border-slate-800/60 bg-white dark:bg-[#111827] rounded-2xl p-4 shadow-sm w-full">
+            <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-2">
+                <span className="h-6 w-6 rounded-md bg-[#13519c] text-white font-black flex items-center justify-center text-xs">K</span>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Bản quyền thuộc về{" "}
+                  <a
+                    href="https://kntech.site/"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[#13519c] dark:text-blue-400 font-bold hover:underline"
+                  >
+                    GiasuTop
+                  </a>
+                  {" "}© 2026 — Nền tảng gia sư trực tuyến hàng đầu Việt Nam
+                </p>
+              </div>
+              <div className="flex gap-4 text-[11px] text-slate-500 dark:text-slate-400">
+                <span className="hover:text-[#13519c] dark:hover:text-blue-400 cursor-pointer transition-colors font-medium">Điều khoản dịch vụ</span>
+                <span className="hover:text-[#13519c] dark:hover:text-blue-400 cursor-pointer transition-colors font-medium">Chính sách bảo mật</span>
+                <span className="hover:text-[#13519c] dark:hover:text-blue-400 cursor-pointer transition-colors font-medium">Liên hệ hợp tác</span>
+              </div>
+            </div>
+          </footer>
+
+      {/* TUTOR BOOKING DATES MODAL */}
+      {selectedTutor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl dark:bg-[#111827] border max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b">
+              <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+                📅 Đặt lịch học cùng gia sư
+              </h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedTutor(null);
+                  setBookingError("");
+                }}
+                className="h-8 w-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center text-sm cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-4">
+              <div className="flex items-center gap-3 bg-slate-50 dark:bg-slate-900/60 p-3 rounded-xl">
+                <div className="h-10 w-10 rounded-full bg-[#13519c] text-white font-semibold flex items-center justify-center text-sm">
+                  {selectedTutor.full_name.charAt(0)}
+                </div>
+                <div>
+                  <h4 className="text-xs font-semibold text-slate-900 dark:text-white">{selectedTutor.full_name}</h4>
+                  <p className="text-[10px] text-slate-400">{selectedTutor.school} • {selectedTutor.major}</p>
+                </div>
+              </div>
+
+              <form onSubmit={handleBookTutor} className="space-y-4 border-t pt-4">
+                {bookingError && (
+                  <div className="p-3 bg-rose-50 text-rose-600 rounded-lg text-xs font-semibold">
+                    ⚠️ {bookingError}
+                  </div>
+                )}
+
+                {bookingSuccess && (
+                  <div className="p-3 bg-emerald-50 text-emerald-700 rounded-lg text-xs font-semibold">
+                    🎉 Đã đặt lịch! Đang tạo hóa đơn học phí...
+                  </div>
+                )}
+
+                {/* Long-term Enrollment Option */}
+                <div className="bg-slate-50 dark:bg-slate-900/60 p-3 rounded-xl border space-y-2">
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase">Loại hình đăng ký</label>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setTutorBookingType("SINGLE")}
+                      className={`flex-1 py-1.5 rounded-lg text-xs font-semibold border transition cursor-pointer ${tutorBookingType === "SINGLE" ? "bg-[#13519c] text-white border-[#13519c]" : "bg-white text-slate-700"}`}
+                    >
+                      Học buổi lẻ
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTutorBookingType("LONG_TERM")}
+                      className={`flex-1 py-1.5 rounded-lg text-xs font-semibold border transition cursor-pointer ${tutorBookingType === "LONG_TERM" ? "bg-[#13519c] text-white border-[#13519c]" : "bg-white text-slate-700"}`}
+                    >
+                      Đăng ký dài hạn
+                    </button>
+                  </div>
+                </div>
+
+                {tutorBookingType === "SINGLE" ? (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[10px] font-semibold text-slate-500 mb-1">
+                        1. Chọn ngày học
+                      </label>
+                      <input
+                        type="date"
+                        required
+                        value={bookingDate}
+                        onChange={(e) => setBookingDate(e.target.value)}
+                        className="h-10 w-full rounded-lg border px-3 text-xs focus:outline-none focus:border-[#13519c] dark:bg-slate-900 dark:text-white"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-semibold text-slate-500 mb-1">
+                        2. Giờ học bắt đầu
+                      </label>
+                      <select
+                        value={bookingStartHour}
+                        onChange={(e) => setBookingStartHour(e.target.value)}
+                        className="h-10 w-full rounded-lg border px-3 text-xs focus:outline-none focus:border-[#13519c] dark:bg-slate-900 dark:text-white"
+                      >
+                        <option value="08:00">08:00 Sáng</option>
+                        <option value="09:00">09:00 Sáng</option>
+                        <option value="14:00">14:00 Chiều</option>
+                        <option value="15:00">15:00 Chiều</option>
+                        <option value="19:00">19:00 Tối</option>
+                        <option value="20:00">20:00 Tối</option>
+                      </select>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-slate-50 dark:bg-slate-900/60 p-3 rounded-xl border space-y-3">
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase">Thiết lập lịch tuần dài hạn (Tùy biến)</label>
+                    <div className="space-y-2">
+                      <div className="text-[10px] font-semibold text-[#13519c]">📅 Tuần 1 (Ví dụ: Thứ 2, 5, 6):</div>
+                      <div className="flex flex-wrap gap-1">
+                        {["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ nhật"].map((day) => {
+                          const isSel = longTermSchedule.week1.includes(day);
+                          return (
+                            <button
+                              type="button"
+                              key={day}
+                              onClick={() => {
+                                const curr = [...longTermSchedule.week1];
+                                const idx = curr.indexOf(day);
+                                if (idx > -1) curr.splice(idx, 1);
+                                else curr.push(day);
+                                setLongTermSchedule({ ...longTermSchedule, week1: curr });
+                              }}
+                              className={`px-2 py-1 rounded text-[10px] font-semibold border transition cursor-pointer ${isSel ? "bg-[#13519c] text-white" : "bg-white text-slate-600"}`}
+                            >
+                              {day}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="text-[10px] font-semibold text-rose-600">📅 Tuần 2 (Ví dụ: CN, Thứ 3, 7):</div>
+                      <div className="flex flex-wrap gap-1">
+                        {["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ nhật"].map((day) => {
+                          const isSel = longTermSchedule.week2.includes(day);
+                          return (
+                            <button
+                              type="button"
+                              key={day}
+                              onClick={() => {
+                                const curr = [...longTermSchedule.week2];
+                                const idx = curr.indexOf(day);
+                                if (idx > -1) curr.splice(idx, 1);
+                                else curr.push(day);
+                                setLongTermSchedule({ ...longTermSchedule, week2: curr });
+                              }}
+                              className={`px-2 py-1 rounded text-[10px] font-semibold border transition cursor-pointer ${isSel ? "bg-rose-600 text-white border-rose-600" : "bg-white text-slate-600"}`}
+                            >
+                              {day}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-semibold text-slate-500 mb-1">Số tuần học đăng ký (Khóa học):</label>
+                      <input
+                        type="number"
+                        min="2"
+                        max="24"
+                        value={longTermWeeks}
+                        onChange={(e) => setLongTermWeeks(Number(e.target.value))}
+                        className="w-full h-8 px-2 border rounded text-xs bg-white"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-500 mb-1">
+                    3. Số giờ học dạy kèm / buổi
+                  </label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {["1.5", "2", "3"].map((hours) => (
+                      <button
+                        key={hours}
+                        type="button"
+                        onClick={() => setBookingDuration(hours)}
+                        className={`h-9 rounded-lg text-xs font-semibold border transition cursor-pointer ${bookingDuration === hours
+                          ? "bg-[#13519c] text-white border-[#13519c]"
+                          : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+                          }`}
+                      >
+                        {hours} tiếng
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="bg-slate-50 dark:bg-slate-900/60 p-3 rounded-lg flex flex-col gap-1 text-xs">
+                  <div className="flex justify-between items-center">
+                    <span className="font-semibold text-slate-400">Đơn giá / giờ:</span>
+                    <span className="font-semibold">{formatVND(Number(selectedTutor.hourly_rate))}</span>
+                  </div>
+                  <div className="flex justify-between items-center border-t pt-1 mt-1">
+                    <span className="font-bold text-slate-500">Tổng cộng ước tính:</span>
+                    <span className="text-base font-bold text-rose-600">
+                      {formatVND(
+                        Number(selectedTutor.hourly_rate) *
+                        Number(bookingDuration) *
+                        (tutorBookingType === "SINGLE"
+                          ? 1
+                          : (longTermSchedule.week1.length + longTermSchedule.week2.length) * (longTermWeeks / 2))
+                      )}
+                    </span>
+                  </div>
+                  <div className="text-[9px] text-slate-400 mt-1">
+                    * Phí giao dịch được trừ tự động từng buổi học vào ví Giáo viên sau 2 ngày (Holding bảo đảm).
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full h-11 bg-[#13519c] text-white text-xs font-semibold rounded-lg hover:bg-blue-800 transition cursor-pointer"
+                >
+                  Xác nhận đặt gia sư
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* BILLING AND SIMULATED WEBHOOK QR MODAL */}
+      {payingAppt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl dark:bg-[#111827] border">
+            <div className="flex items-center justify-between pb-3 border-b">
+              <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+                Chi tiết lớp học & Thanh toán
+              </h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setPayingAppt(null);
+                  setPaymentDetails(null);
+                  setPaymentComplete(false);
+                }}
+                className="h-8 w-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-4">
+              {/* Course Info */}
+              <div className="text-[11px] text-left bg-slate-50 dark:bg-slate-900/60 p-3 rounded-lg space-y-1.5 border leading-normal">
+                <div>🏫 Lớp học với: <span className="font-semibold text-slate-900 dark:text-white">{payingAppt.tutor_name}</span></div>
+                <div>⏱️ Bắt đầu: <span className="font-semibold text-slate-900 dark:text-white">{formatDateTimeText(payingAppt.start_time)}</span></div>
+                <div>💰 Học phí: <span className="font-bold text-rose-600">{formatVND(payingAppt.price_paid)}</span></div>
+              </div>
+
+              {!paymentDetails ? (
+                // Show options
+                <div className="space-y-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const t = token || localStorage.getItem("token") || "";
+                      window.open(`/payment?appointmentId=${payingAppt.id}&token=${encodeURIComponent(t)}`, "_blank");
+                    }}
+                    className="w-full h-11 bg-[#13519c] text-white text-xs font-semibold rounded-lg hover:bg-blue-800 transition cursor-pointer flex items-center justify-center gap-1.5 shadow"
+                  >
+                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="2" y="5" width="20" height="14" rx="2" /><line x1="2" y1="10" x2="22" y2="10" /></svg>
+                    Thanh toán VietQR (Chuyển khoản)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (wallet.available_balance >= Number(payingAppt.price_paid)) {
+                        if (confirm(`Xác nhận thanh toán ${formatVND(payingAppt.price_paid)} từ ví nội bộ?`)) {
+                          try {
+                            const res = await fetch("http://localhost:5000/api/payments/wallet-pay", {
+                              method: "POST",
+                              headers: {
+                                "Content-Type": "application/json",
+                                Authorization: `Bearer ${token}`,
+                              },
+                              body: JSON.stringify({ appointmentId: payingAppt.id }),
+                            });
+                            const json = await res.json();
+                            if (json.success) {
+                              showKntechAlert("success", "Thanh toán thành công", json.message);
+                              logClientActivity("WALLET_PAY_APPOINTMENT", `Thanh toán học phí lớp ${payingAppt.id} bằng ví nội bộ`);
+                              setPayingAppt(null);
+                              fetchUserData();
+                            } else {
+                              showKntechAlert("error", "Lỗi giao dịch", json.message);
+                            }
+                          } catch (e) {
+                            showKntechAlert("error", "Lỗi kết nối", "Không thể thanh toán bằng ví.");
+                          }
+                        }
+                      } else {
+                        showKntechAlert(
+                          "warning",
+                          "Số dư không đủ",
+                          `Học phí yêu cầu ${formatVND(payingAppt.price_paid)} nhưng ví nội bộ của bác chỉ còn ${formatVND(wallet.available_balance)}. Đang chuyển hướng sang ví nội bộ để nạp thêm...`
+                        );
+                        setPayingAppt(null);
+                        setTimeout(() => {
+                          setTopupAmountInput(String(Number(payingAppt.price_paid) - wallet.available_balance));
+                          setActiveTab("wallet");
+                        }, 2500);
+                      }
+                    }}
+                    className="w-full h-11 bg-emerald-600 text-white text-xs font-semibold rounded-lg hover:bg-emerald-700 transition cursor-pointer flex items-center justify-center gap-1.5 shadow"
+                  >
+                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M20 12V8H6a2 2 0 0 1-2-2 2 2 0 0 1 2-2h14v4" /><path d="M4 6v12a2 2 0 0 0 2 2h14v-4" /><circle cx="16" cy="12" r="2" /></svg>
+                    Thanh toán qua Ví nội bộ ({formatVND(wallet.available_balance)})
+                  </button>
+                </div>
+              ) : (
+                // Show QR details generated
+                <div className="space-y-4 text-center">
+                  {generatingQr ? (
+                    <div className="text-xs py-6">⏳ Đang tạo mã QR thanh toán...</div>
+                  ) : (
+                    <>
+                      <div className="bg-white p-2 border rounded-lg inline-block mx-auto">
+                        <img src={paymentDetails.qrUrl} alt="VietQR" className="h-40 w-40 object-contain mx-auto" />
+                      </div>
+
+                      <div className="text-[11px] text-left bg-slate-50 dark:bg-slate-900/60 p-3 rounded-lg space-y-1.5 border leading-normal">
+                        <div>🏦 Ngân hàng: <span className="font-semibold text-slate-900">{paymentDetails.bankCode}</span></div>
+                        <div>💳 Số tài khoản: <span className="font-semibold text-slate-900">{paymentDetails.accountNumber}</span></div>
+                        <div>👤 Chủ tài khoản: <span className="font-semibold text-slate-900">{paymentDetails.accountName}</span></div>
+                        <div>💰 Học phí: <span className="font-semibold text-rose-600">{formatVND(paymentDetails.amount)}</span></div>
+                        <div>✍️ Nội dung: <span className="font-semibold text-[#13519c]">{paymentDetails.description}</span></div>
+                      </div>
+
+                      <div className="pt-2 border-t">
+                        {paymentComplete ? (
+                          <div className="p-3 bg-emerald-100 text-emerald-800 text-xs font-semibold rounded-lg">
+                            ✓ GHI NHẬN THANH TOÁN THÀNH CÔNG!
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={handleSimulatePayment}
+                            className="w-full h-11 bg-emerald-600 text-white text-xs font-semibold rounded-lg hover:bg-emerald-700 transition cursor-pointer"
+                          >
+                            📲 Giả Lập Đã Chuyển Tiền Thành Công
+                          </button>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* FULLSCREEN CLASSROOM SCREEN */}
+      {activeClassroom && (
+        <div className="fixed inset-0 z-50 bg-[#0f172a] text-white flex flex-col font-sans">
+          <header className="bg-[#1e293b] px-4 py-3 flex items-center justify-between border-b border-slate-800 h-14">
+            <div className="flex items-center gap-2">
+              <span className="text-xl">💻</span>
+              <div>
+                <h4 className="text-sm font-semibold">PHÒNG HỌC TRỰC TUYẾN GiasuTop</h4>
+                <p className="text-[10px] text-slate-400">Gia sư trực tiếp: <span className="text-blue-400 font-semibold">{activeClassroom.tutor_name}</span></p>
+              </div>
+            </div>
+            <button
+              onClick={() => setActiveClassroom(null)}
+              className="bg-rose-600 text-white font-semibold text-xs px-4 py-2 rounded-lg cursor-pointer"
+            >
+              Rời Phòng Học
+            </button>
+          </header>
+
+          <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
+            {/* Whiteboard and Video Streams */}
+            <div className="flex-1 flex flex-col p-4 space-y-4 overflow-y-auto">
+
+              {/* Videos */}
+              <div className="grid grid-cols-2 gap-4 h-32 md:h-44">
+                <div className="relative rounded-xl bg-slate-900 border border-slate-800 flex flex-col items-center justify-center">
+                  <span className="text-2xl animate-bounce">👨‍🏫</span>
+                  <span className="text-xs font-semibold text-slate-300 mt-2">{activeClassroom.tutor_name} (Gia sư)</span>
+                </div>
+                <div className="relative rounded-xl bg-slate-900 border border-slate-800 flex flex-col items-center justify-center">
+                  <span className="text-2xl animate-pulse">👶</span>
+                  <span className="text-xs font-semibold text-slate-300 mt-2">Học sinh</span>
+                </div>
+              </div>
+
+              {/* Board */}
+              <div className="flex-1 min-h-[300px] bg-white rounded-xl border flex flex-col text-slate-800 overflow-hidden shadow-md">
+                <div className="bg-slate-50 px-4 py-2.5 border-b flex items-center justify-between gap-4 text-xs">
+                  <div className="flex items-center gap-3">
+                    <span className="font-semibold text-slate-600">🎨 Bảng vẽ:</span>
+                    <button onClick={() => { drawingColorRef.current = "#dc2626"; }} className="h-6 w-6 bg-red-600 rounded-full border" />
+                    <button onClick={() => { drawingColorRef.current = "#2563eb"; }} className="h-6 w-6 bg-blue-600 rounded-full border" />
+                    <button onClick={() => { drawingColorRef.current = "#000000"; }} className="h-6 w-6 bg-black rounded-full border" />
+                  </div>
+                  <button onClick={clearCanvas} className="bg-slate-200 hover:bg-slate-350 px-3 py-1.5 rounded-lg font-semibold text-slate-700 transition">
+                    Xóa bảng
+                  </button>
+                </div>
+                <div className="flex-1 bg-white relative">
+                  <canvas
+                    ref={canvasRef}
+                    width={700}
+                    height={350}
+                    onMouseDown={startDrawing}
+                    onMouseMove={draw}
+                    onMouseUp={stopDrawing}
+                    onMouseLeave={stopDrawing}
+                    onTouchStart={startDrawing}
+                    onTouchMove={draw}
+                    onTouchEnd={stopDrawing}
+                    className="w-full h-full block cursor-crosshair bg-white touch-none"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Chatbox column */}
+            <div className="w-full lg:w-72 bg-[#1e293b] border-t lg:border-t-0 lg:border-l border-slate-800 flex flex-col">
+              <div className="p-3 border-b border-slate-800 grid grid-cols-2 gap-2 text-xs">
+                <button onClick={() => setIsMicOn(!isMicOn)} className={`py-2 rounded-lg text-center font-semibold cursor-pointer ${isMicOn ? "bg-emerald-600/20 text-emerald-400 border border-emerald-500/20" : "bg-rose-600 text-white"}`}>
+                  {isMicOn ? "🎤 Mic: Bật" : "🔇 Mic: Tắt"}
+                </button>
+                <button onClick={() => setIsCamOn(!isCamOn)} className={`py-2 rounded-lg text-center font-semibold cursor-pointer ${isCamOn ? "bg-emerald-600/20 text-emerald-400 border border-emerald-500/20" : "bg-rose-600 text-white"}`}>
+                  {isCamOn ? "🎥 Cam: Bật" : "🔇 Cam: Tắt"}
+                </button>
+              </div>
+
+              <div className="flex-1 p-3 overflow-y-auto space-y-3 text-xs flex flex-col">
+                <div className="text-center font-semibold text-[10px] text-slate-400 bg-slate-900/50 py-1.5 rounded-lg">
+                  TRÒ CHUYỆN LỚP HỌC
+                </div>
+                {chatMessages.map((msg, i) => (
+                  <div key={i} className="flex flex-col">
+                    <span className="font-semibold text-blue-400 text-[10px]">{msg.sender} <span className="text-slate-500">{msg.time}</span></span>
+                    <span className="mt-1 bg-slate-850/80 px-3 py-2 rounded-xl text-slate-200 max-w-[90%] leading-relaxed">
+                      {msg.text}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              <form onSubmit={handleSendMessage} className="p-3 border-t border-slate-800 flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Gõ tin nhắn..."
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  className="flex-1 h-9 bg-slate-950 border border-slate-800 rounded-lg px-3 text-xs focus:outline-none focus:border-[#13519c] text-white"
+                />
+                <button type="submit" className="h-9 px-4 bg-blue-600 rounded-lg text-xs font-semibold cursor-pointer">
+                  Gửi
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DOCUMENT UPLOAD FORM MODAL (Screenshot 4 flow) */}
+      {uploadModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-xl bg-white p-5 shadow-2xl dark:bg-[#111827] border">
+            <div className="flex items-center justify-between pb-2 border-b mb-4 text-xs font-semibold">
+              <span>📚 Tải tài liệu đề thi lên hệ thống</span>
+              <button onClick={() => setUploadModalOpen(false)} className="text-slate-400 hover:text-slate-600">✕</button>
+            </div>
+
+            <form onSubmit={handleUploadDoc} className="space-y-3.5 text-xs">
+              <div>
+                <label className="block text-slate-500 mb-1 font-semibold">Tiêu đề tài liệu *</label>
+                <input
+                  type="text"
+                  required
+                  value={docUploadForm.title}
+                  onChange={(e) => setDocUploadForm({ ...docUploadForm, title: e.target.value })}
+                  placeholder="VD: [Toán 12] - Đề thi thử giữa kỳ 1..."
+                  className="w-full h-10 px-3 border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:outline-none text-slate-900 dark:bg-slate-900 dark:border-slate-700 dark:text-white"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-500 mb-1 font-semibold">Tải tệp tài liệu lên (PDF, Word, ...) *</label>
+                <input
+                  type="file"
+                  required
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,image/*"
+                  onChange={(e) => setDocFileToUpload(e.target.files?.[0] || null)}
+                  className="w-full text-xs border border-dashed border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 rounded-xl p-2.5 file:mr-3 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 dark:file:bg-slate-800 dark:file:text-blue-300 cursor-pointer"
+                />
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="block text-slate-500 mb-1 font-semibold">Môn học</label>
+                  <select
+                    value={docUploadForm.subjectTag}
+                    onChange={(e) => setDocUploadForm({ ...docUploadForm, subjectTag: e.target.value })}
+                    className="w-full h-10 border border-slate-200 rounded-xl px-2 bg-slate-50 focus:bg-white focus:outline-none text-slate-900 dark:bg-slate-900 dark:border-slate-700 dark:text-white"
+                  >
+                    <option value="Toán">Toán</option>
+                    <option value="Lý">Vật lý</option>
+                    <option value="Hóa">Hóa học</option>
+                    <option value="Văn">Ngữ Văn</option>
+                    <option value="Tiếng Anh">Tiếng Anh</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-slate-500 mb-1 font-semibold">Khối Lớp</label>
+                  <select
+                    value={docUploadForm.gradeTag}
+                    onChange={(e) => setDocUploadForm({ ...docUploadForm, gradeTag: e.target.value })}
+                    className="w-full h-10 border border-slate-200 rounded-xl px-2 bg-slate-50 focus:bg-white focus:outline-none text-slate-900 dark:bg-slate-900 dark:border-slate-700 dark:text-white"
+                  >
+                    <option value="Lớp 10">Lớp 10</option>
+                    <option value="Lớp 11">Lớp 11</option>
+                    <option value="Lớp 12">Lớp 12</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-slate-500 mb-1 font-semibold">Phân Loại</label>
+                  <select
+                    value={docUploadForm.typeTag}
+                    onChange={(e) => setDocUploadForm({ ...docUploadForm, typeTag: e.target.value })}
+                    className="w-full h-10 border border-slate-200 rounded-xl px-2 bg-slate-50 focus:bg-white focus:outline-none text-slate-900 dark:bg-slate-900 dark:border-slate-700 dark:text-white"
+                  >
+                    <option value="Tài liệu">Tài liệu</option>
+                    <option value="Sách">Sách</option>
+                    <option value="Ôn tập">Ôn tập</option>
+                    <option value="Giữa kì 1">Giữa kì 1</option>
+                    <option value="Giữa kì 2">Giữa kì 2</option>
+                    <option value="Cuối kì 1">Cuối kì 1</option>
+                    <option value="Cuối kì 2">Cuối kì 2</option>
+                    <option value="Tài liệu ôn thi">Tài liệu ôn thi</option>
+                  </select>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                className="w-full h-10 bg-[#13519c] hover:bg-blue-800 text-white font-semibold rounded-lg transition cursor-pointer"
+              >
+                Gửi yêu cầu kiểm duyệt file
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* REJECT TUTOR REASON MODAL */}
+      {rejectingTutorId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-xl bg-white p-5 shadow-2xl dark:bg-[#111827] border">
+            <h3 className="text-xs font-semibold text-slate-900 dark:text-white mb-2">
+              Lý Do Từ Chối Hồ Sơ
+            </h3>
+            <p className="text-xs text-slate-400 mb-4">Nhập lý do cụ thể gửi tới giáo viên:</p>
+            <textarea
+              value={adminRejectReason}
+              onChange={(e) => setAdminRejectReason(e.target.value)}
+              placeholder="VD: Thiếu chứng chỉ sư phạm hoặc ảnh CCCD mờ..."
+              className="w-full h-24 p-3 text-xs border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:outline-none text-slate-900 dark:bg-slate-900 dark:border-slate-700 dark:text-white"
+            />
+            <div className="flex gap-2 justify-end mt-4">
+              <button
+                type="button"
+                onClick={() => handleDecideTutor(rejectingTutorId, "REJECTED", adminRejectReason)}
+                className="bg-rose-600 text-white text-xs font-semibold px-4 py-2 rounded-lg cursor-pointer"
+              >
+                Từ chối hồ sơ
+              </button>
+              <button
+                type="button"
+                onClick={() => { setRejectingTutorId(null); setAdminRejectReason(""); }}
+                className="bg-slate-200 text-slate-700 text-xs font-semibold px-4 py-2 rounded-lg cursor-pointer"
+              >
+                Hủy
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ADMIN EDIT USER PROFILE MODAL */}
+      {editingUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl dark:bg-[#111827] border overflow-y-auto max-h-[90vh]">
+            <div className="flex items-center justify-between pb-3 border-b mb-4">
+              <h3 className="text-xs font-semibold text-slate-900 dark:text-white">
+                Cấu hình thông tin thành viên (Admin)
+              </h3>
+              <button
+                type="button"
+                onClick={() => setEditingUser(null)}
+                className="h-8 w-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateUser} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 mb-1">Họ và tên</label>
+                <input
+                  type="text"
+                  required
+                  value={userForm.fullName}
+                  onChange={(e) => setUserForm({ ...userForm, fullName: e.target.value })}
+                  className="h-10 w-full rounded-xl border border-slate-200 px-3 text-xs bg-slate-50 focus:bg-white focus:outline-none text-slate-900 dark:bg-slate-900 dark:border-slate-700 dark:text-white"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 mb-1">Địa chỉ Email</label>
+                <input
+                  type="email"
+                  required
+                  value={userForm.email}
+                  onChange={(e) => setUserForm({ ...userForm, email: e.target.value })}
+                  className="h-10 w-full rounded-xl border border-slate-200 px-3 text-xs bg-slate-50 focus:bg-white focus:outline-none text-slate-900 dark:bg-slate-900 dark:border-slate-700 dark:text-white"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 mb-1">Số điện thoại</label>
+                <input
+                  type="text"
+                  value={userForm.phone}
+                  onChange={(e) => setUserForm({ ...userForm, phone: e.target.value })}
+                  className="h-10 w-full rounded-xl border border-slate-200 px-3 text-xs bg-slate-50 focus:bg-white focus:outline-none text-slate-900 dark:bg-slate-900 dark:border-slate-700 dark:text-white"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 mb-1">Vai trò</label>
+                  <select
+                    value={userForm.role}
+                    onChange={(e) => setUserForm({ ...userForm, role: e.target.value as any })}
+                    className="h-10 w-full rounded-xl border border-slate-200 px-3 text-xs bg-slate-50 focus:bg-white focus:outline-none text-slate-900 dark:bg-slate-900 dark:border-slate-700 dark:text-white"
+                  >
+                    <option value="STUDENT">STUDENT</option>
+                    <option value="TUTOR">TUTOR</option>
+                    <option value="ADMIN">ADMIN</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 mb-1">Trạng thái</label>
+                  <select
+                    value={userForm.status}
+                    onChange={(e) => setUserForm({ ...userForm, status: e.target.value as any })}
+                    className="h-10 w-full rounded-xl border border-slate-200 px-3 text-xs bg-slate-50 focus:bg-white focus:outline-none text-slate-900 dark:bg-slate-900 dark:border-slate-700 dark:text-white"
+                  >
+                    <option value="ACTIVE">ACTIVE</option>
+                    <option value="BANNED">BANNED</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="bg-rose-50 dark:bg-rose-950/20 p-3 rounded-xl border border-rose-200 space-y-2">
+                <label className="block text-xs font-semibold text-rose-800 dark:text-rose-300">
+                  Thay đổi mật khẩu tài khoản
+                </label>
+                <input
+                  type="text"
+                  placeholder="Để trống nếu không thay đổi..."
+                  value={userForm.password}
+                  onChange={(e) => setUserForm({ ...userForm, password: e.target.value })}
+                  className="h-10 w-full rounded-xl border border-slate-200 px-3 text-xs bg-slate-50 focus:bg-white focus:outline-none text-slate-900 dark:bg-slate-900 dark:border-slate-700 dark:text-white"
+                />
+              </div>
+
+              <button
+                type="submit"
+                className="w-full h-11 bg-[#13519c] hover:bg-blue-800 text-white text-xs font-semibold rounded-lg transition cursor-pointer"
+              >
+                Lưu Thông Tin
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* VIEW TUTOR PROFILE DETAIL MODAL */}
+      {viewingTutor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-[#111827] p-6 shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[90vh] overflow-y-auto space-y-5">
+            <div className="flex justify-between items-start border-b pb-3.5">
+              <div className="flex items-center gap-3">
+                <img
+                  src={`https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(viewingTutor.email)}`}
+                  alt={viewingTutor.full_name}
+                  className="h-14 w-14 rounded-2xl border-2 border-blue-500 bg-slate-50 shadow-sm"
+                />
+                <div>
+                  <h3 className="text-sm font-bold text-slate-950 dark:text-white flex items-center gap-1.5">
+                    {viewingTutor.full_name}
+                    <span className="text-[9px] bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-350 font-bold px-1.5 py-0.2 rounded-full border border-emerald-200/30">
+                      ✓ Đã xác minh
+                    </span>
+                  </h3>
+                  <p className="text-[10px] text-slate-400 mt-0.5">{viewingTutor.school} • {viewingTutor.major}</p>
+                  <div className="flex items-center gap-1 mt-1 text-[9px] text-amber-500 font-semibold">
+                    <span>⭐ {(4.7 + (viewingTutor.full_name.charCodeAt(0) % 4) * 0.1).toFixed(1)}</span>
+                    <span className="text-slate-400">({(viewingTutor.full_name.charCodeAt(1) % 40) + 15} đánh giá)</span>
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setViewingTutor(null)}
+                className="h-8 w-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-400 flex items-center justify-center text-sm cursor-pointer shrink-0"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-slate-50 dark:bg-slate-900/60 p-3 rounded-xl border border-slate-100 dark:border-slate-800/40">
+                  <span className="text-[8px] uppercase font-bold text-slate-400 block mb-1">Học phí dạy kèm</span>
+                  <span className="text-xs font-black text-rose-600">{formatVND(viewingTutor.hourly_rate)}/giờ</span>
+                </div>
+                <div className="bg-slate-50 dark:bg-slate-900/60 p-3 rounded-xl border border-slate-100 dark:border-slate-800/40">
+                  <span className="text-[8px] uppercase font-bold text-slate-400 block mb-1">Trình độ học vấn</span>
+                  <span className="text-xs font-semibold text-slate-800 dark:text-white">{viewingTutor.year_of_study || "Sinh viên năm 3"}</span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <span className="text-[9px] uppercase font-bold text-slate-400 block">Môn học nhận dạy</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {(viewingTutor.subjects_to_teach || []).map((sub) => (
+                    <span key={sub} className="text-[10px] font-semibold bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 px-2.5 py-0.5 rounded border border-blue-200/20">
+                      {sub}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <div className="bg-slate-50 dark:bg-slate-900/60 p-4 rounded-xl space-y-2 border border-slate-100 dark:border-slate-800/40">
+                <span className="text-[9px] uppercase font-bold text-slate-400 block">Giới thiệu bản thân</span>
+                <p className="text-xs text-slate-700 dark:text-slate-350 leading-relaxed font-normal whitespace-pre-line">
+                  {viewingTutor.bio || "Gia sư nhiều năm kinh nghiệm chuyên môn dạy kèm bám sát đề thi và cấu trúc bài học lớp học phổ thông, hỗ trợ ôn luyện kỳ thi quan trọng đạt kết quả tối ưu."}
+                </p>
+              </div>
+
+              {viewingTutor.documents && viewingTutor.documents.length > 0 && (
+                <div className="space-y-2">
+                  <span className="text-[9px] uppercase font-bold text-slate-400 block">Bằng cấp & Chứng chỉ ({viewingTutor.documents.length})</span>
+                  <div className="grid grid-cols-2 gap-2">
+                    {viewingTutor.documents.map((doc: any) => {
+                      const fileUrl = `http://localhost:5000/api/tutors/documents/${doc.id}?token=${token}`;
+                      const isImage = doc.mime_type?.startsWith("image/");
+                      return (
+                        <div key={doc.id} className="bg-slate-50 dark:bg-slate-900/60 p-2.5 rounded-xl border dark:border-slate-800 flex flex-col justify-between gap-2">
+                          <span className="text-[10px] font-semibold text-slate-700 dark:text-slate-300 truncate" title={doc.original_name}>
+                            {doc.original_name}
+                          </span>
+                          {isImage ? (
+                            <a href={fileUrl} target="_blank" rel="noreferrer" className="block relative group overflow-hidden rounded bg-slate-100 dark:bg-slate-950">
+                              <img src={fileUrl} alt={doc.original_name} className="h-20 w-full object-cover rounded hover:scale-105 transition duration-200" />
+                              <div className="absolute inset-0 bg-black/45 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-[8px] text-white font-bold">XEM 🔎</div>
+                            </a>
+                          ) : (
+                            <a href={fileUrl} target="_blank" rel="noreferrer" className="h-20 rounded bg-blue-50 dark:bg-slate-800 flex flex-col items-center justify-center border border-dashed text-blue-600 dark:text-blue-400 hover:bg-blue-100 transition text-[10px] font-bold gap-1 text-center px-1">
+                              <span>📄 {doc.original_name.split('.').pop()?.toUpperCase()} File</span>
+                              <span className="text-[8px] font-semibold text-slate-450 dark:text-slate-500">Click để mở ↗</span>
+                            </a>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-col gap-2.5 pt-3 border-t">
+              {/* Xem trang ca nhan button */}
+              <button
+                onClick={() => {
+                  setTutorProfileToView(viewingTutor);
+                  setActiveTab("profile");
+                  setViewingTutor(null);
+                }}
+                className="w-full bg-white border-2 border-slate-200 hover:border-[#13519c] text-[#13519c] font-bold text-xs px-4 py-2.5 rounded-xl cursor-pointer transition text-center"
+              >
+                Xem trang cá nhân
+              </button>
+              
+              <div className="flex gap-2.5">
+                <button
+                  onClick={() => {
+                    if (!token) {
+                      openAuth("login");
+                      return;
+                    }
+                    setChatActivePartner(viewingTutor);
+                    setHomeSubTab("community");
+                    setActiveTab("home");
+                    setViewingTutor(null);
+                  }}
+                  className="flex-1 bg-purple-650 hover:bg-purple-750 text-white font-bold text-xs px-4 py-2.5 rounded-xl cursor-pointer transition shadow text-center flex items-center justify-center gap-1.5"
+                >
+                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" /></svg>
+                </button>
+                <button
+                  onClick={() => {
+                    setSelectedTutor(viewingTutor);
+                    setViewingTutor(null);
+                  }}
+                  className="flex-[4] bg-[#13519c] hover:bg-blue-800 text-white font-bold text-xs px-4 py-2.5 rounded-xl cursor-pointer transition shadow text-center"
+                >
+                  📅 Đặt lịch học ngay
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* VIEW DOCUMENT DETAIL MODAL */}
+      {selectedDocument && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-[#111827] p-6 shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[90vh] overflow-y-auto space-y-4">
+            <div className="flex justify-between items-start border-b pb-3.5">
+              <div>
+                <div className="flex gap-1.5 flex-wrap">
+                  <span className="bg-orange-500 text-white text-[8px] font-bold px-1.5 py-0.2 rounded">
+                    {selectedDocument.grade_tag}
+                  </span>
+                  <span className="bg-blue-600 text-white text-[8px] font-bold px-1.5 py-0.2 rounded">
+                    {selectedDocument.subject_tag}
+                  </span>
+                  <span className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-350 text-[8px] font-bold px-1.5 py-0.2 rounded border">
+                    {selectedDocument.type_tag}
+                  </span>
+                </div>
+                <h3 className="text-sm font-bold text-slate-955 dark:text-white mt-1.5 leading-snug">
+                  {selectedDocument.title}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedDocument(null)}
+                className="h-8 w-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-400 flex items-center justify-center text-sm cursor-pointer shrink-0 ml-4"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                <div className="bg-slate-50 dark:bg-slate-900/60 p-2.5 rounded-xl border dark:border-slate-800">
+                  <span className="text-[8px] uppercase font-bold text-slate-400 block mb-0.5">Lượt xem</span>
+                  <span className="font-semibold text-slate-800 dark:text-white">👁️ {selectedDocument.download_count * 3 + 12}</span>
+                </div>
+                <div className="bg-slate-50 dark:bg-slate-900/60 p-2.5 rounded-xl border dark:border-slate-800">
+                  <span className="text-[8px] uppercase font-bold text-slate-400 block mb-0.5">Lượt tải</span>
+                  <span className="font-semibold text-[#13519c] dark:text-blue-400">📥 {selectedDocument.download_count}</span>
+                </div>
+                <div className="bg-slate-50 dark:bg-slate-900/60 p-2.5 rounded-xl border dark:border-slate-800">
+                  <span className="text-[8px] uppercase font-bold text-slate-400 block mb-0.5">Định dạng</span>
+                  <span className="font-semibold text-rose-600">PDF Document</span>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 dark:bg-slate-900/60 p-4 rounded-xl border border-slate-100 dark:border-slate-800/40 text-center space-y-2.5">
+                <div className="text-3xl text-slate-400">📄</div>
+                <span className="text-[10px] font-bold text-slate-400 block uppercase">Xem trước tài liệu (Preview)</span>
+                <p className="text-[11px] text-slate-500 italic max-w-[80%] mx-auto">
+                  "Đề thi thử học kỳ và tài liệu ôn luyện bám sát cấu trúc của GiasuTop. Đảm bảo chất lượng cao."
+                </p>
+                <div className="h-24 bg-white dark:bg-slate-950 rounded border border-dashed dark:border-slate-800 flex items-center justify-center text-[10px] text-slate-400">
+                  Mô phỏng trang 1 / 15 của tài liệu...
+                </div>
+              </div>
+
+              <div className="text-[10px] text-slate-400 space-y-1 bg-slate-50 dark:bg-slate-900/40 p-3 rounded-lg">
+                <p>👤 Đăng bởi: <span className="font-semibold text-slate-700 dark:text-slate-350">{selectedDocument.uploader_name}</span></p>
+                <p>📅 Ngày cập nhật: <span className="font-semibold text-slate-700 dark:text-slate-350">{new Date(selectedDocument.created_at).toLocaleDateString("vi-VN")}</span></p>
+                <p>🔗 Tệp nguồn: <span className="font-semibold text-blue-600 dark:text-blue-400 break-all">{selectedDocument.file_url}</span></p>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-3 border-t dark:border-slate-800">
+              <button
+                onClick={() => setSelectedDocument(null)}
+                className="bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:hover:bg-slate-750 dark:text-slate-200 font-semibold text-xs px-4 py-2 rounded-lg cursor-pointer transition"
+              >
+                Đóng
+              </button>
+              <button
+                onClick={() => {
+                  alert(`Mô phỏng tải tài liệu thành công: ${selectedDocument.title}\nTệp tin sẽ được lưu từ nguồn: ${selectedDocument.file_url}`);
+                  setSelectedDocument(null);
+                }}
+                className="bg-[#13519c] hover:bg-blue-800 text-white font-semibold text-xs px-4 py-2 rounded-lg cursor-pointer transition shadow"
+              >
+                📥 Tải xuống PDF
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+
+
+
+      {/* TUTOR PROFILE REGISTER/UPDATE MODAL */}
+      {tutorProfileModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl dark:bg-[#111827] border overflow-y-auto max-h-[90vh]">
+            <div className="flex items-center justify-between pb-3 border-b mb-4">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                {tutorStatus === "APPROVED"
+                  ? "⚙️ Thiết Lập Hồ Sơ Dạy Học"
+                  : tutorStatus === "PENDING"
+                    ? "🕒 Hồ Sơ Chờ Phê Duyệt"
+                    : "📝 Xác Minh Minh Chứng & CCCD"}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setTutorProfileModalOpen(false)}
+                className="h-8 w-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {tutorStatus === "APPROVED" ? (
+              <div className="space-y-4">
+                <form onSubmit={handleUpdateTutorProfile} className="space-y-4 text-xs">
+                  <div>
+                    <label className="block text-slate-500 mb-1 font-semibold">Trường đào tạo *</label>
+                    <input
+                      type="text"
+                      required
+                      value={tutorProfileForm.school}
+                      onChange={(e) => setTutorProfileForm({ ...tutorProfileForm, school: e.target.value })}
+                      placeholder="Ví dụ: Đại học Bách Khoa Hà Nội"
+                      className="w-full h-10 px-3 border rounded-xl bg-slate-50 focus:bg-white focus:outline-none text-slate-900 dark:text-white dark:bg-slate-900"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-slate-500 mb-1 font-semibold">Chuyên ngành *</label>
+                      <input
+                        type="text"
+                        required
+                        value={tutorProfileForm.major}
+                        onChange={(e) => setTutorProfileForm({ ...tutorProfileForm, major: e.target.value })}
+                        placeholder="Ví dụ: Sư phạm Toán"
+                        className="w-full h-10 px-3 border rounded-xl bg-slate-50 focus:bg-white focus:outline-none text-slate-900 dark:text-white dark:bg-slate-900"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-slate-500 mb-1 font-semibold">Trình độ / Năm học *</label>
+                      <select
+                        value={tutorProfileForm.yearOfStudy}
+                        onChange={(e) => setTutorProfileForm({ ...tutorProfileForm, yearOfStudy: e.target.value })}
+                        className="w-full h-10 border rounded-xl px-2 bg-slate-50 text-slate-900 dark:text-white dark:bg-slate-900"
+                      >
+                        <option value="Sinh viên năm 1">Sinh viên năm 1</option>
+                        <option value="Sinh viên năm 2">Sinh viên năm 2</option>
+                        <option value="Sinh viên năm 3">Sinh viên năm 3</option>
+                        <option value="Sinh viên năm 4">Sinh viên năm 4</option>
+                        <option value="Đã tốt nghiệp cử nhân">Đã tốt nghiệp cử nhân</option>
+                        <option value="Thạc sĩ / Cao học">Thạc sĩ / Cao học</option>
+                        <option value="Giảng viên / Giáo viên">Giảng viên / Giáo viên</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-500 mb-1 font-semibold">Mức học phí đề xuất (VND / giờ) *</label>
+                    <input
+                      type="number"
+                      required
+                      value={tutorProfileForm.hourlyRate}
+                      onChange={(e) => setTutorProfileForm({ ...tutorProfileForm, hourlyRate: e.target.value })}
+                      placeholder="Ví dụ: 150000"
+                      className="w-full h-10 px-3 border rounded-xl bg-slate-50 focus:bg-white focus:outline-none text-slate-900 dark:text-white dark:bg-slate-900"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-500 mb-1 font-semibold">Môn học đăng ký giảng dạy (chọn ít nhất 1 môn) *</label>
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      {["Toán", "Lý", "Hóa", "Văn", "Tiếng Anh", "Sinh học"].map((sub) => {
+                        const isChecked = tutorProfileForm.subjectsToTeach.includes(sub);
+                        return (
+                          <button
+                            key={sub}
+                            type="button"
+                            onClick={() => {
+                              const current = [...tutorProfileForm.subjectsToTeach];
+                              const index = current.indexOf(sub);
+                              if (index > -1) {
+                                current.splice(index, 1);
+                              } else {
+                                current.push(sub);
+                              }
+                              setTutorProfileForm({ ...tutorProfileForm, subjectsToTeach: current });
+                            }}
+                            className={`px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all cursor-pointer ${isChecked
+                              ? "bg-[#13519c] text-white border-[#13519c]"
+                              : "bg-white text-slate-655 border-slate-200 hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700"
+                              }`}
+                          >
+                            {sub}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-500 mb-1 font-semibold">Giới thiệu bản thân & Kinh nghiệm dạy học *</label>
+                    <textarea
+                      required
+                      rows={4}
+                      value={tutorProfileForm.bio}
+                      onChange={(e) => setTutorProfileForm({ ...tutorProfileForm, bio: e.target.value })}
+                      placeholder="Bác vui lòng giới thiệu chi tiết về phương pháp giảng dạy..."
+                      className="w-full p-3 border rounded-xl bg-slate-50 focus:bg-white focus:outline-none text-slate-900 dark:text-white dark:bg-slate-900"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-500 mb-1.5 font-semibold">Tùy chỉnh màu sắc/gradient thẻ Gia sư (Hình 1) *</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {[
+                        { name: "Xanh Dương (KNTech)", class: "bg-gradient-to-r from-blue-600 via-indigo-600 to-[#13519c]" },
+                        { name: "Xanh Lá (Teal)", class: "bg-gradient-to-r from-emerald-500 via-teal-600 to-teal-800" },
+                        { name: "Sunset Hoàng Hôn", class: "bg-gradient-to-r from-rose-500 via-orange-600 to-red-700" },
+                        { name: "Tím Midnight", class: "bg-gradient-to-r from-purple-600 via-violet-750 to-slate-900" },
+                      ].map((g) => (
+                        <button
+                          key={g.class}
+                          type="button"
+                          onClick={() => setTutorProfileForm({ ...tutorProfileForm, cardGradient: g.class })}
+                          className={`p-2 rounded-xl text-left border font-semibold text-white h-12 flex flex-col justify-between cursor-pointer transition ${g.class} ${tutorProfileForm.cardGradient === g.class ? "ring-2 ring-blue-500 ring-offset-1 dark:ring-offset-slate-950" : "opacity-80 hover:opacity-100"
+                            }`}
+                        >
+                          <span className="text-[9px] truncate">{g.name}</span>
+                          <span className="text-[7px] tracking-widest uppercase bg-black/20 px-1 rounded self-end">CHỌN</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="pt-2 border-t dark:border-slate-800">
+                    <label className="block text-slate-500 mb-1 font-semibold">Đề xuất tỉ lệ chiết khấu deal hoa hồng với Hệ thống (%) *</label>
+                    <div className="flex gap-2 items-center">
+                      <input
+                        type="number"
+                        min="1"
+                        max="90"
+                        step="0.1"
+                        value={newCommissionRate}
+                        onChange={(e) => setNewCommissionRate(e.target.value)}
+                        placeholder="Ví dụ: 12.5"
+                        className="flex-1 h-10 px-3 border rounded-xl bg-slate-50 focus:bg-white focus:outline-none text-slate-950 dark:text-white dark:bg-slate-900"
+                      />
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!newCommissionRate) return;
+                          try {
+                            const res = await fetch("http://localhost:5000/api/tutors/me/commission", {
+                              method: "PUT",
+                              headers: {
+                                "Content-Type": "application/json",
+                                Authorization: `Bearer ${token}`,
+                              },
+                              body: JSON.stringify({ commissionPercent: Number(newCommissionRate) }),
+                            });
+                            const json = await res.json();
+                            if (json.success) {
+                              showKntechAlert("success", "Đã gửi đề xuất", "Mức chiết khấu đề xuất đã được gửi lên hệ thống để Admin duyệt.");
+                              setNewCommissionRate("");
+                            } else {
+                              showKntechAlert("error", "Lỗi đề xuất", json.message);
+                            }
+                          } catch (err) {
+                            showKntechAlert("error", "Lỗi kết nối", "Không thể kết nối đến máy chủ.");
+                          }
+                        }}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-4 h-10 rounded-xl cursor-pointer"
+                      >
+                        Gửi Deal %
+                      </button>
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={tutorProfileForm.subjectsToTeach.length === 0}
+                    className="w-full h-11 mt-2 bg-gradient-to-r from-blue-600 to-[#13519c] text-white text-xs font-bold rounded-xl shadow-md transition hover:opacity-90 disabled:opacity-50 cursor-pointer"
+                  >
+                    Cập Nhật Hồ Sơ Dạy Học
+                  </button>
+                </form>
+
+                {/* Phase 2: Certificates upload section */}
+                <div className="pt-4 border-t dark:border-slate-800 mt-4 space-y-3">
+                  <h4 className="font-bold text-xs text-slate-800 dark:text-slate-200">🎓 Tải Lên Bằng Cấp / Minh Chứng Mới (PDF, Word, Ảnh)</h4>
+                  <p className="text-[10px] text-slate-400">Các bác có thể cập nhật các chứng chỉ ngoại ngữ, sư phạm hoặc bằng tốt nghiệp.</p>
+                  <form onSubmit={handleSubmitVerification} className="space-y-3">
+                    <input
+                      type="file"
+                      multiple
+                      accept=".pdf,.doc,.docx,image/*"
+                      onChange={(e) => setCertificatesFiles(e.target.files)}
+                      className="w-full text-xs border border-dashed border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 rounded-xl p-2.5 file:mr-3 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 dark:file:bg-slate-800 dark:file:text-blue-300 cursor-pointer"
+                      required
+                    />
+                    <button
+                      type="submit"
+                      disabled={submittingVerification}
+                      className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg transition text-xs cursor-pointer"
+                    >
+                      {submittingVerification ? "Đang tải lên..." : "Tải Lên Chứng Chỉ"}
+                    </button>
+                  </form>
+                </div>
+              </div>
+            ) : tutorStatus === "PENDING" ? (
+              <div className="space-y-4 py-4 text-center">
+                <div className="text-4xl animate-pulse">🕒</div>
+                <div className="p-3.5 bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-350 rounded-xl border border-amber-200/40 text-xs font-semibold leading-relaxed">
+                  Hồ sơ xác minh của bác đang được Ban quản trịGiasuTopphê duyệt. Vui lòng quay lại sau khi hồ sơ đã được duyệt để thiết lập hồ sơ dạy học.
+                </div>
+                <div className="space-y-2 text-left bg-slate-50 dark:bg-slate-900/60 p-3.5 rounded-xl border border-slate-200/40 text-xs text-slate-500">
+                  <span className="font-bold text-slate-500 block mb-1">Tài liệu đã gửi:</span>
+                  <p className="truncate">✓ Ảnh chân dung cá nhân</p>
+                  <p className="truncate">✓ CCCD Mặt trước</p>
+                  <p className="truncate">✓ CCCD Mặt sau</p>
+                </div>
+              </div>
+            ) : (
+              // NOT_SUBMITTED or REJECTED (Phase 1 upload form)
+              <form onSubmit={handleSubmitVerification} className="space-y-4 text-xs">
+                {tutorStatus === "REJECTED" && (
+                  <div className="p-3 bg-rose-50 dark:bg-rose-950/20 text-rose-700 dark:text-rose-350 rounded-xl border border-rose-200/40 font-semibold leading-relaxed">
+                    ⚠️ Hồ sơ trước đây đã bị từ chối. Lý do: <span className="font-bold text-rose-800 dark:text-rose-300">{tutorRejectReason}</span>. Vui lòng gửi lại tài liệu mới chính xác.
+                  </div>
+                )}
+
+                <div className="p-3 bg-blue-50 dark:bg-blue-950/20 text-blue-800 dark:text-blue-300 rounded-xl border border-blue-100 dark:border-blue-900/30 leading-relaxed">
+                  Bác cần gửi thông tin minh chứng chân dung và ảnh chụp CCCD 2 mặt để xác minh danh tính gia sư.
+                </div>
+
+                <div>
+                  <label className="block text-slate-500 font-semibold mb-1">1. Ảnh chân dung cá nhân *</label>
+                  <input
+                    type="file"
+                    required
+                    accept="image/*"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file && !file.type.startsWith("image/")) {
+                        showKntechAlert("error", "Lỗi tệp tin", "Vui lòng chỉ chọn file hình ảnh!");
+                        e.target.value = "";
+                        return;
+                      }
+                      setPortraitFile(file || null);
+                    }}
+                    className="w-full text-xs border border-dashed border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 rounded-xl p-2.5 file:mr-3 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 dark:file:bg-slate-800 dark:file:text-blue-300 cursor-pointer"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-500 font-semibold mb-1">2. CCCD Mặt trước *</label>
+                  <input
+                    type="file"
+                    required
+                    accept="image/*"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file && !file.type.startsWith("image/")) {
+                        showKntechAlert("error", "Lỗi tệp tin", "Vui lòng chỉ chọn file hình ảnh!");
+                        e.target.value = "";
+                        return;
+                      }
+                      setCccdFrontFile(file || null);
+                    }}
+                    className="w-full text-xs border border-dashed border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 rounded-xl p-2.5 file:mr-3 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 dark:file:bg-slate-800 dark:file:text-blue-300 cursor-pointer"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-500 font-semibold mb-1">3. CCCD Mặt sau *</label>
+                  <input
+                    type="file"
+                    required
+                    accept="image/*"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file && !file.type.startsWith("image/")) {
+                        showKntechAlert("error", "Lỗi tệp tin", "Vui lòng chỉ chọn file hình ảnh!");
+                        e.target.value = "";
+                        return;
+                      }
+                      setCccdBackFile(file || null);
+                    }}
+                    className="w-full text-xs border border-dashed border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 rounded-xl p-2.5 file:mr-3 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 dark:file:bg-slate-800 dark:file:text-blue-300 cursor-pointer"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={submittingVerification}
+                  className="w-full h-11 bg-gradient-to-r from-blue-600 to-[#13519c] text-white text-xs font-bold rounded-xl shadow-md transition hover:opacity-90 disabled:opacity-50 cursor-pointer flex items-center justify-center"
+                >
+                  {submittingVerification ? "Đang gửi thông tin..." : "Gửi Xác Minh Hồ Sơ"}
+                </button>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
+
+
+      {/* ADMIN OR NEWS FEED: ADD/EDIT NEWS ARTICLE MODAL */}
+      {newsFormOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl dark:bg-[#111827] border overflow-y-auto max-h-[90vh]">
+            <div className="flex items-center justify-between pb-3 border-b mb-4">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                📰 {editingNews ? "Cập nhật bài viết tin tức" : "Đăng bài viết tin tức mới"}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setNewsFormOpen(false)}
+                className="h-8 w-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleAddOrEditNews} className="space-y-4 text-xs">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-500 mb-1 font-semibold">Tiêu đề tin tức *</label>
+                  <input
+                    type="text"
+                    required
+                    value={newsForm.title}
+                    onChange={(e) => setNewsForm({ ...newsForm, title: e.target.value })}
+                    className="w-full h-10 px-3 border rounded-xl bg-slate-50 focus:bg-white focus:outline-none text-slate-900 dark:text-white dark:bg-slate-900"
+                    placeholder="Nhập tiêu đề..."
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-500 mb-1 font-semibold">Danh mục bài viết *</label>
+                  <input
+                    type="text"
+                    required
+                    value={newsForm.category}
+                    onChange={(e) => setNewsForm({ ...newsForm, category: e.target.value })}
+                    className="w-full h-10 px-3 border rounded-xl bg-slate-50 focus:bg-white focus:outline-none text-slate-900 dark:text-white dark:bg-slate-900"
+                    placeholder="Ví dụ: Toán, Luyện thi, Thông báo..."
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-500 mb-1 font-semibold">URL ảnh đại diện (Thumbnail URL)</label>
+                <input
+                  type="text"
+                  value={newsForm.thumbnailUrl}
+                  onChange={(e) => setNewsForm({ ...newsForm, thumbnailUrl: e.target.value })}
+                  className="w-full h-10 px-3 border rounded-xl bg-slate-50 focus:bg-white focus:outline-none text-slate-900 dark:text-white dark:bg-slate-900"
+                  placeholder="https://images.unsplash.com/..."
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-500 mb-1 font-semibold">Tóm tắt ngắn gọn *</label>
+                <input
+                  type="text"
+                  required
+                  value={newsForm.summary}
+                  onChange={(e) => setNewsForm({ ...newsForm, summary: e.target.value })}
+                  className="w-full h-10 px-3 border rounded-xl bg-slate-50 focus:bg-white focus:outline-none text-slate-900 dark:text-white dark:bg-slate-900"
+                  placeholder="Nhập tóm tắt bài viết..."
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-500 mb-1 font-semibold">Nội dung chi tiết tin tức (Word Editor, KaTeX hỗ trợ) *</label>
+                <RichTextEditor
+                  content={newsForm.content}
+                  onChange={(val) => setNewsForm({ ...newsForm, content: val })}
+                  placeholder="Nhập toàn bộ nội dung bài viết tin tức tại đây..."
+                />
+              </div>
+
+              <div className="flex gap-2.5 pt-2 border-t">
+                <button
+                  type="submit"
+                  className="flex-1 h-11 bg-gradient-to-r from-blue-600 to-[#13519c] text-white text-xs font-bold rounded-xl transition hover:opacity-90 cursor-pointer shadow"
+                >
+                  Lưu & Đăng bài viết
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNewsFormOpen(false)}
+                  className="w-24 h-11 bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl hover:bg-slate-350 cursor-pointer"
+                >
+                  Hủy bỏ
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+
+
+      {/* AUTH MODAL DIALOG */}
+      <AuthModal
+        isOpen={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+        onSuccess={handleAuthSuccess}
+        initialTab={authModalConfig.tab}
+        initialRole={authModalConfig.role}
+      />
+
+      {/* CUSTOM ALERT DIALOG */}
+      <CustomAlert
+        isOpen={customAlertOpen}
+        type={customAlertType}
+        title={customAlertTitle}
+        message={customAlertMessage}
+        imageUrl={customAlertImg}
+        onClose={() => setCustomAlertOpen(false)}
+      />
+
+      {/* MOBILE BOTTOM NAVIGATION BAR */}
+      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 shadow-[0_-4px_12px_rgba(0,0,0,0.05)] rounded-t-2xl z-40 px-2 pb-5 pt-2 flex justify-between items-center">
+        {/* Tab 1: Trang chủ */}
+        <button onClick={() => setActiveTab("home")} className={`flex flex-col items-center justify-center w-1/4 ${activeTab === "home" ? "text-blue-500" : "text-slate-400"}`}>
+          <div className={`p-1.5 rounded-full ${activeTab === "home" ? "bg-blue-50" : ""}`}>
+            <svg className="w-5 h-5" fill={activeTab === "home" ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
+          </div>
+          <span className="text-[10px] font-semibold mt-0.5">Trang chủ</span>
+        </button>
+
+        {/* Tab 2: Việc của tôi */}
+        <button onClick={() => setActiveTab("bookings")} className={`flex flex-col items-center justify-center w-1/4 ${activeTab === "bookings" ? "text-blue-500" : "text-slate-400"}`}>
+          <div className={`p-1.5 rounded-full ${activeTab === "bookings" ? "bg-blue-50" : ""}`}>
+            <svg className="w-5 h-5" fill={activeTab === "bookings" ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+          </div>
+          <span className="text-[10px] font-medium mt-0.5">Việc của tôi</span>
+        </button>
+
+        {/* Tab 3: Tin tức (map with news) */}
+        <button onClick={() => setActiveTab("news")} className={`flex flex-col items-center justify-center w-1/4 ${activeTab === "news" ? "text-blue-500" : "text-slate-400"}`}>
+          <div className={`p-1.5 rounded-full ${activeTab === "news" ? "bg-blue-50" : ""}`}>
+            <svg className="w-5 h-5" fill={activeTab === "news" ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path></svg>
+          </div>
+          <span className="text-[10px] font-medium mt-0.5">Tin tức</span>
+        </button>
+
+        {/* Tab 4: Cá nhân */}
+        <button onClick={() => setActiveTab("profile")} className={`flex flex-col items-center justify-center w-1/4 ${activeTab === "profile" ? "text-blue-500" : "text-slate-400"}`}>
+          <div className={`p-1.5 rounded-full ${activeTab === "profile" ? "bg-blue-50" : ""}`}>
+            <svg className="w-5 h-5" fill={activeTab === "profile" ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+          </div>
+          <span className="text-[10px] font-medium mt-0.5">Cá nhân</span>
+        </button>
+      </div>
+
+      {/* MOBILE DRAWER MENU */}
+      {isDrawerOpen && (
+        <div className="md:hidden fixed inset-0 z-50 flex">
+          {/* Backdrop */}
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsDrawerOpen(false)}></div>
+          
+          {/* Drawer Content */}
+          <div className="relative w-64 max-w-[80%] bg-white h-full shadow-2xl flex flex-col overflow-y-auto animate-slide-in-right origin-left" style={{ animationDirection: "normal" }}>
+            <div className="p-4 bg-gradient-to-r from-blue-600 to-[#13519c] text-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <img src="https://i.ibb.co/NdgYx2Fy/Gemini-Generated-Image-89azsx89azsx89az.png" alt="Logo" className="h-8 w-8 rounded-lg object-cover bg-white" />
+                <span className="font-bold">Menu</span>
+              </div>
+              <button onClick={() => setIsDrawerOpen(false)} className="text-white/80 hover:text-white">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+              </button>
+            </div>
+            
+            <div className="flex-1 py-4 flex flex-col gap-1 px-3">
+              {/* Tab 1: Trang chủ */}
+              <button
+                onClick={() => {
+                  setActiveTab("home");
+                  setHomeSubTab("feed");
+                  setIsDrawerOpen(false);
+                }}
+                className={`w-full flex items-center gap-3.5 px-3 py-2.5 rounded-xl transition cursor-pointer ${
+                  activeTab === "home" && homeSubTab === "feed"
+                    ? "bg-blue-50 text-blue-700"
+                    : "hover:bg-slate-50 text-slate-700"
+                }`}
+              >
+                <div className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-sm shrink-0">
+                  <i className="fa-solid fa-house text-sm"></i>
+                </div>
+                <span className="text-xs font-semibold">Trang chủ</span>
+              </button>
+
+              {/* Tab 1b: Cộng đồng chat */}
+              <button
+                onClick={() => {
+                  setActiveTab("home");
+                  setHomeSubTab("community");
+                  setIsDrawerOpen(false);
+                }}
+                className={`w-full flex items-center gap-3.5 px-3 py-2.5 rounded-xl transition cursor-pointer ${
+                  activeTab === "home" && homeSubTab === "community"
+                    ? "bg-emerald-50 text-emerald-700"
+                    : "hover:bg-slate-50 text-slate-700"
+                }`}
+              >
+                <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-sm shrink-0">
+                  <i className="fa-solid fa-comments text-sm"></i>
+                </div>
+                <span className="text-xs font-semibold">Cộng đồng chat</span>
+              </button>
+
+              {/* Tab 2: Gia sư */}
+              <button
+                onClick={() => {
+                  setActiveTab("courses");
+                  setIsDrawerOpen(false);
+                }}
+                className={`w-full flex items-center gap-3.5 px-3 py-2.5 rounded-xl transition cursor-pointer ${
+                  activeTab === "courses"
+                    ? "bg-blue-50 text-blue-700"
+                    : "hover:bg-slate-50 text-slate-700"
+                }`}
+              >
+                <div className="w-9 h-9 rounded-xl bg-blue-400 text-white flex items-center justify-center shadow-sm shrink-0">
+                  <i className="fa-solid fa-graduation-cap text-sm"></i>
+                </div>
+                <span className="text-xs font-semibold">Tìm gia sư giỏi</span>
+              </button>
+
+              {/* Tab 3: Tài liệu */}
+              <button
+                onClick={() => {
+                  setActiveTab("documents");
+                  setIsDrawerOpen(false);
+                }}
+                className={`w-full flex items-center gap-3.5 px-3 py-2.5 rounded-xl transition cursor-pointer ${
+                  activeTab === "documents"
+                    ? "bg-orange-50 text-orange-700"
+                    : "hover:bg-slate-50 text-slate-700"
+                }`}
+              >
+                <div className="w-9 h-9 rounded-xl bg-orange-505 text-white flex items-center justify-center shadow-sm shrink-0" style={{ backgroundColor: "#ff9800" }}>
+                  <i className="fa-regular fa-folder-open text-sm"></i>
+                </div>
+                <span className="text-xs font-semibold">Thư viện tài liệu</span>
+              </button>
+
+              {/* Tab 4: Tin tức */}
+              <button
+                onClick={() => {
+                  setActiveTab("news");
+                  setIsDrawerOpen(false);
+                }}
+                className={`w-full flex items-center gap-3.5 px-3 py-2.5 rounded-xl transition cursor-pointer ${
+                  activeTab === "news"
+                    ? "bg-slate-100 text-slate-800"
+                    : "hover:bg-slate-50 text-slate-700"
+                }`}
+              >
+                <div className="w-9 h-9 rounded-xl bg-slate-600 text-white flex items-center justify-center shadow-sm shrink-0">
+                  <i className="fa-regular fa-file-lines text-sm"></i>
+                </div>
+                <span className="text-xs font-semibold">Tin tức GiasuTop</span>
+              </button>
+              
+              {/* Tab 5: Lịch trình */}
+              <button
+                onClick={() => {
+                  setActiveTab("bookings");
+                  setIsDrawerOpen(false);
+                }}
+                className={`w-full flex items-center gap-3.5 px-3 py-2.5 rounded-xl transition cursor-pointer ${
+                  activeTab === "bookings"
+                    ? "bg-yellow-50 text-yellow-700"
+                    : "hover:bg-slate-50 text-slate-700"
+                }`}
+              >
+                <div className="w-9 h-9 rounded-xl bg-yellow-400 text-slate-850 flex items-center justify-center shadow-sm shrink-0">
+                  <i className="fa-regular fa-calendar-check text-sm"></i>
+                </div>
+                <span className="text-xs font-semibold">Lịch trình học</span>
+              </button>
+
+              {/* Tab 6: Ví / Thu nhập */}
+              <button
+                onClick={() => {
+                  setActiveTab("wallet");
+                  setIsDrawerOpen(false);
+                }}
+                className={`w-full flex items-center gap-3.5 px-3 py-2.5 rounded-xl transition cursor-pointer ${
+                  activeTab === "wallet"
+                    ? "bg-green-50 text-green-700"
+                    : "hover:bg-slate-50 text-slate-700"
+                }`}
+              >
+                <div className="w-9 h-9 rounded-xl bg-green-500 text-white flex items-center justify-center shadow-sm shrink-0">
+                  <i className="fa-solid fa-money-check-dollar text-sm"></i>
+                </div>
+                <span className="text-xs font-semibold">Ví / Thu nhập</span>
+              </button>
+
+              {/* Tab 7: Trang cá nhân */}
+              <button
+                onClick={() => {
+                  if (!token) {
+                    openAuth("login");
+                  } else {
+                    setTutorProfileToView(null);
+                    setActiveTab("profile");
+                  }
+                  setIsDrawerOpen(false);
+                }}
+                className={`w-full flex items-center gap-3.5 px-3 py-2.5 rounded-xl transition cursor-pointer ${
+                  activeTab === "profile" && !tutorProfileToView
+                    ? "bg-teal-50 text-teal-700"
+                    : "hover:bg-slate-50 text-slate-700"
+                }`}
+              >
+                <div className="w-9 h-9 rounded-xl bg-teal-600 text-white flex items-center justify-center shadow-sm shrink-0">
+                  <i className="fa-regular fa-user text-sm"></i>
+                </div>
+                <span className="text-xs font-semibold">Trang cá nhân</span>
+              </button>
+
+              {/* Tab 8: Quản trị */}
+              {user && user.role === "ADMIN" && (
+                <button
+                  onClick={() => {
+                    setActiveTab("admin");
+                    setAdminTab("subjects");
+                    setIsDrawerOpen(false);
+                  }}
+                  className={`w-full flex items-center gap-3.5 px-3 py-2.5 rounded-xl transition cursor-pointer ${
+                    activeTab === "admin"
+                      ? "bg-rose-50 text-rose-700"
+                      : "hover:bg-slate-50 text-slate-700"
+                  }`}
+                >
+                  <div className="w-9 h-9 rounded-xl bg-rose-600 text-white flex items-center justify-center shadow-sm shrink-0">
+                    <i className="fa-solid fa-user-gear text-sm"></i>
+                  </div>
+                  <span className="text-xs font-semibold">Quản trị hệ thống</span>
+                </button>
+              )}
+            </div>
+
+            
+            <div className="p-4 border-t border-slate-100">
+              {token && user ? (
+                <button onClick={() => { handleLogout(); setIsDrawerOpen(false); }} className="w-full bg-slate-100 text-slate-700 font-semibold py-2.5 rounded-xl hover:bg-slate-200">
+                  Đăng xuất
+                </button>
+              ) : (
+                <button onClick={() => { openAuth("login"); setIsDrawerOpen(false); }} className="w-full bg-[#13519c] text-white font-semibold py-2.5 rounded-xl shadow hover:bg-blue-800">
+                  Đăng nhập
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
