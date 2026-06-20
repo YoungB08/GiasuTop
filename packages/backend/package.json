@@ -5,7 +5,8 @@
   "main": "src/index.js",
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
-    "build": "tsc"
+    "build": "tsc",
+    "migrate": "ts-node src/migrations/add_username_column.ts"
   },
   "keywords": [],
   "author": "",

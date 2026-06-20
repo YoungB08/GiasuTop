@@ -30,7 +30,11 @@ const PORT = env.PORT || 5000;
 
 app.use(express.json());
 app.use(requestLogger);
-app.use(helmet());
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+  })
+);
 app.disable('x-powered-by');
 
 app.use(
@@ -113,6 +117,44 @@ app.post('/api/logs', async (req, res) => {
 });
 
 // Static uploads (local dev). Ensure folder exists.
+import pool from './config/db';
+
+async function runStartupMigration() {
+  console.log("Checking and running users table migrations...");
+  try {
+    const columnExists = async (table: string, column: string) => {
+      const [columns]: any = await pool.query(`SHOW COLUMNS FROM \`${table}\` LIKE ?`, [column]);
+      return columns.length > 0;
+    };
+    if (!(await columnExists("users", "username"))) {
+      console.log("Adding username column to users...");
+      await pool.query("ALTER TABLE users ADD COLUMN username VARCHAR(100) NULL UNIQUE AFTER full_name");
+    }
+    if (!(await columnExists("users", "bio"))) {
+      console.log("Adding bio column to users...");
+      await pool.query("ALTER TABLE users ADD COLUMN bio TEXT NULL");
+    }
+    if (!(await columnExists("users", "address"))) {
+      console.log("Adding address column to users...");
+      await pool.query("ALTER TABLE users ADD COLUMN address VARCHAR(255) NULL");
+    }
+    if (!(await columnExists("users", "dob"))) {
+      console.log("Adding dob column to users...");
+      await pool.query("ALTER TABLE users ADD COLUMN dob VARCHAR(64) NULL");
+    }
+    if (!(await columnExists("users", "age"))) {
+      console.log("Adding age column to users...");
+      await pool.query("ALTER TABLE users ADD COLUMN age INT NULL");
+    }
+    console.log("Users table migrations checked/completed successfully.");
+  } catch (err) {
+    console.error("Failed to run startup migration:", err);
+  }
+}
+
+// Run migrations on start
+runStartupMigration();
+
 const uploadsDir = path.join(process.cwd(), "uploads", "tutors");
 fs.mkdirSync(uploadsDir, { recursive: true });
 app.use("/uploads/tutors", express.static(uploadsDir, { fallthrough: false }));
@@ -120,6 +162,10 @@ app.use("/uploads/tutors", express.static(uploadsDir, { fallthrough: false }));
 const docsDir = path.join(process.cwd(), "uploads", "docs");
 fs.mkdirSync(docsDir, { recursive: true });
 app.use("/uploads/docs", express.static(docsDir, { fallthrough: false }));
+
+const avatarsDir = path.join(process.cwd(), "uploads", "avatars");
+fs.mkdirSync(avatarsDir, { recursive: true });
+app.use("/uploads/avatars", express.static(avatarsDir, { fallthrough: false }));
 
 fs.mkdirSync(CHAT_UPLOAD_DIR, { recursive: true });
 app.use("/uploads/chat", express.static(CHAT_UPLOAD_DIR, {

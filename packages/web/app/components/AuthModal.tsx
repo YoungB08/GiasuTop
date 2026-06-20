@@ -13,6 +13,7 @@ type AuthModalProps = {
 export default function AuthModal({ isOpen, onClose, onSuccess, initialTab, initialRole }: AuthModalProps) {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [role, setRole] = useState<"STUDENT" | "TUTOR">("STUDENT");
@@ -41,7 +42,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialTab, init
     const endpoint = isLogin ? "/api/auth/login" : "/api/auth/register";
     const body = isLogin 
       ? { email, password, rememberMe }
-      : { email, password, fullName, role };
+      : { email, username, password, fullName, role };
 
     try {
       const response = await fetch(`http://localhost:5000${endpoint}`, {
@@ -57,6 +58,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialTab, init
             const field = i.path.join(".");
             const fieldMap: Record<string, string> = {
               email: "Email",
+              username: "Tên đăng nhập",
               password: "Mật khẩu",
               fullName: "Họ và tên",
               role: "Vai trò",
@@ -70,7 +72,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialTab, init
               const minLen = match ? match[1] : "2";
               errorMsg = `phải dài ít nhất ${minLen} ký tự.`;
             } else if (errorMsg.includes("Invalid email")) {
-              errorMsg = "không đúng định dạng (ví dụ: ten@giasu.vn).";
+              errorMsg = "không đúng định dạng (ví dụ: email@gmail.com).";
             }
             return `• ${fieldName}: ${errorMsg}`;
           }).join("\n");
@@ -80,8 +82,10 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialTab, init
         let errorMsg = result.message || "Đã xảy ra lỗi. Vui lòng kiểm tra thông tin.";
         if (errorMsg === "Email already exists") {
           errorMsg = "Email này đã được đăng ký trên hệ thống. Bác vui lòng chọn email khác hoặc đăng nhập.";
+        } else if (errorMsg === "Username already exists") {
+          errorMsg = "Tên đăng nhập này đã được đăng ký. Bác vui lòng chọn tên đăng nhập khác.";
         } else if (errorMsg === "Invalid credentials") {
-          errorMsg = "Email hoặc mật khẩu không chính xác.";
+          errorMsg = "Thông tin đăng nhập hoặc mật khẩu không chính xác.";
         }
         throw new Error(errorMsg);
       }
@@ -124,29 +128,45 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialTab, init
           )}
 
           {!isLogin && (
-            <div>
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                Họ và tên của bạn
-              </label>
-              <input
-                type="text"
-                required
-                placeholder="Ví dụ: Nguyễn Văn A"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 text-xs font-medium text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-white"
-              />
-            </div>
+            <>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Họ và tên của bạn
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ví dụ: Nguyễn Văn A"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 text-xs font-medium text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Tên đăng nhập
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ví dụ: nguyenvana123"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_.]/g, ""))}
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 text-xs font-medium text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                />
+              </div>
+            </>
           )}
 
           <div>
             <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-              Địa chỉ Email
+              {isLogin ? "Email, số điện thoại hoặc tên đăng nhập" : "Địa chỉ Email"}
             </label>
             <input
-              type="email"
+              type={isLogin ? "text" : "email"}
               required
-              placeholder="ten-cua-ban@gmail.com"
+              placeholder={isLogin ? "ten@gmail.com, 09xxxxxx hoặc username" : "ten-cua-ban@gmail.com"}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 text-xs font-medium text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-white"

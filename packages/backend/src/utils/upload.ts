@@ -189,3 +189,32 @@ export function createChatUpload() {
     },
   });
 }
+
+export const AVATARS_UPLOAD_DIR = path.join(process.cwd(), "uploads", "avatars");
+
+export function createAvatarUpload() {
+  const storage = multer.diskStorage({
+    destination: (_req, _file, cb) => {
+      fs.mkdirSync(AVATARS_UPLOAD_DIR, { recursive: true });
+      cb(null, AVATARS_UPLOAD_DIR);
+    },
+    filename: (_req, file, cb) => {
+      const ext = safeExt(file.originalname);
+      const name = crypto.randomBytes(16).toString("hex") + (ext || "");
+      cb(null, name);
+    },
+  });
+
+  return multer({
+    storage,
+    limits: {
+      fileSize: 4 * 1024 * 1024, // 4MB
+    },
+    fileFilter: (_req, file, cb) => {
+      const ext = safeExt(file.originalname);
+      if (!ext || !hasAllowedMime(ext, file.mimetype)) return cb(new Error("Unsupported file type"));
+      cb(null, true);
+    },
+  });
+}
+

@@ -1,5 +1,6 @@
 import React from "react";
 import { IconSearch, IconUser, IconGraduationCap, IconBook, IconStar, IconZap } from "../icons";
+import { getAvatarUrl } from "../../utils/avatar";
 
 type CoursesTabProps = {
   searchTerm: string;
@@ -145,9 +146,9 @@ export default function CoursesTab({
                 <div className="p-4 space-y-3">
                   <div className="flex items-center gap-3">
                     <img
-                      src={`https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(t.email)}`}
+                      src={getAvatarUrl(t)}
                       alt={t.full_name}
-                      className="h-10 w-10 rounded-full border bg-slate-50 shrink-0"
+                      className="h-10 w-10 rounded-full border bg-slate-50 shrink-0 object-cover"
                     />
                     <div className="min-w-0">
                       <h5 className="text-xs font-bold text-slate-900 dark:text-white truncate">{t.full_name}</h5>

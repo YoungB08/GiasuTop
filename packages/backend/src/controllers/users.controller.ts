@@ -7,7 +7,7 @@ export async function getMe(req: AuthedRequest, res: Response) {
   if (!req.user) return res.status(401).json({ success: false, message: "Unauthorized" });
 
   const [rows] = await pool.query(
-    "SELECT id, full_name, email, role, phone, avatar_url, status, created_at FROM users WHERE id = ? LIMIT 1",
+    "SELECT id, full_name, username, email, role, phone, avatar_url, bio, address, dob, age, status, created_at FROM users WHERE id = ? LIMIT 1",
     [req.user.id]
   );
   const me = Array.isArray(rows) ? (rows as any[])[0] : undefined;
@@ -17,13 +17,24 @@ export async function getMe(req: AuthedRequest, res: Response) {
     return res.status(403).json({ success: false, code: "USER_BANNED", message: "Tài khoản của bạn đã bị khóa (BANNED)!" });
   }
 
-  return res.json({ success: true, data: me });
+  return res.json({
+    success: true,
+    data: {
+      ...me,
+      fullName: me.full_name,
+      avatarUrl: me.avatar_url,
+    },
+  });
 }
 
 const UpdateMeSchema = z.object({
   fullName: z.string().min(2).max(120).optional(),
   phone: z.string().max(32).optional().nullable(),
-  avatarUrl: z.string().url().max(2000).optional().nullable(),
+  avatarUrl: z.string().max(2000).optional().nullable(),
+  bio: z.string().optional().nullable(),
+  address: z.string().max(255).optional().nullable(),
+  dob: z.string().max(64).optional().nullable(),
+  age: z.number().int().positive().optional().nullable(),
 });
 
 export async function updateMe(req: AuthedRequest, res: Response) {
@@ -31,12 +42,51 @@ export async function updateMe(req: AuthedRequest, res: Response) {
   const input = UpdateMeSchema.parse(req.body);
 
   await pool.query(
-    "UPDATE users SET full_name = COALESCE(?, full_name), phone = COALESCE(?, phone), avatar_url = COALESCE(?, avatar_url) WHERE id = ?",
-    [input.fullName ?? null, input.phone ?? null, input.avatarUrl ?? null, req.user.id]
+    "UPDATE users SET full_name = COALESCE(?, full_name), phone = COALESCE(?, phone), avatar_url = COALESCE(?, avatar_url), bio = COALESCE(?, bio), address = COALESCE(?, address), dob = COALESCE(?, dob), age = COALESCE(?, age) WHERE id = ?",
+    [
+      input.fullName ?? null,
+      input.phone ?? null,
+      input.avatarUrl ?? null,
+      input.bio ?? null,
+      input.address ?? null,
+      input.dob ?? null,
+      input.age ?? null,
+      req.user.id
+    ]
   );
 
   return getMe(req, res);
 }
+
+import fs from "fs";
+import { detectAllowedUpload } from "../utils/upload";
+
+export async function uploadAvatar(req: any, res: any) {
+  try {
+    if (!req.user) return res.status(401).json({ success: false, message: "Unauthorized" });
+    if (!req.file) return res.status(400).json({ success: false, message: "Không có file nào được gửi lên." });
+
+    const isValid = await detectAllowedUpload(req.file.path, req.file.mimetype);
+    if (!isValid) {
+      await fs.promises.rm(req.file.path, { force: true });
+      return res.status(400).json({ success: false, message: "File không hợp lệ hoặc không khớp định dạng hình ảnh." });
+    }
+
+    const avatarUrl = `/uploads/avatars/${req.file.filename}`;
+    
+    // Save to user avatar_url
+    await pool.query("UPDATE users SET avatar_url = ? WHERE id = ?", [avatarUrl, req.user.id]);
+
+    return res.json({
+      success: true,
+      message: "Đã tải lên ảnh đại diện thành công!",
+      avatarUrl,
+    });
+  } catch (e: any) {
+    return res.status(500).json({ success: false, message: e.message });
+  }
+}
+
 
 export async function getMyAppointments(req: AuthedRequest, res: Response): Promise<any> {
   if (!req.user) return res.status(401).json({ success: false, message: "Unauthorized" });

@@ -1,15 +1,20 @@
 import React from "react";
+import KntechUpload from "../KntechUpload";
 
 type TutorProfileModalProps = {
   tutorProfileModalOpen: boolean;
   setTutorProfileModalOpen: (open: boolean) => void;
-  tutorStatus: string;
-  tutorRejectReason: string;
+  tutorStatus: string | null;
+  tutorRejectReason: string | null;
   tutorProfileForm: any;
   setTutorProfileForm: (form: any) => void;
   newCommissionRate: string;
   setNewCommissionRate: (rate: string) => void;
   submittingVerification: boolean;
+  portraitFile?: File | null;
+  cccdFrontFile?: File | null;
+  cccdBackFile?: File | null;
+  certificatesFiles?: FileList | null;
   setPortraitFile: (file: File | null) => void;
   setCccdFrontFile: (file: File | null) => void;
   setCccdBackFile: (file: File | null) => void;
@@ -31,6 +36,10 @@ export default function TutorProfileModal({
   newCommissionRate,
   setNewCommissionRate,
   submittingVerification,
+  portraitFile,
+  cccdFrontFile,
+  cccdBackFile,
+  certificatesFiles,
   setPortraitFile,
   setCccdFrontFile,
   setCccdBackFile,
@@ -66,6 +75,151 @@ export default function TutorProfileModal({
         {tutorStatus === "APPROVED" ? (
           <div className="space-y-4">
             <form onSubmit={handleUpdateTutorProfile} className="space-y-4 text-xs text-left">
+              <div>
+                <label className="block text-slate-500 mb-1 font-semibold">Trình độ / Năm học *</label>
+                <select
+                  value={tutorProfileForm.yearOfStudy}
+                  onChange={(e) => setTutorProfileForm({ ...tutorProfileForm, yearOfStudy: e.target.value })}
+                  className="w-full h-10 border rounded-xl px-2 bg-slate-50 text-slate-900 dark:text-white dark:bg-slate-900 border-slate-250 dark:border-slate-700 cursor-pointer"
+                >
+                  <option value="Sinh viên năm 1">Sinh viên năm 1</option>
+                  <option value="Sinh viên năm 2">Sinh viên năm 2</option>
+                  <option value="Sinh viên năm 3">Sinh viên năm 3</option>
+                  <option value="Sinh viên năm 4">Sinh viên năm 4</option>
+                  <option value="Đã tốt nghiệp cử nhân">Đã tốt nghiệp cử nhân</option>
+                  <option value="Thạc sĩ / Cao học">Thạc sĩ / Cao học</option>
+                  <option value="Giảng viên / Giáo viên">Giảng viên / Giáo viên</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-slate-500 mb-1 font-semibold">Mức học phí đề xuất (VND / giờ) *</label>
+                <input
+                  type="number"
+                  required
+                  value={tutorProfileForm.hourlyRate}
+                  onChange={(e) => setTutorProfileForm({ ...tutorProfileForm, hourlyRate: e.target.value })}
+                  placeholder="Ví dụ: 150000"
+                  className="w-full h-10 px-3 border rounded-xl bg-slate-50 focus:bg-white focus:outline-none text-slate-900 dark:text-white dark:bg-slate-900 border-slate-250 dark:border-slate-700"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-500 mb-1 font-semibold">Đề xuất tỉ lệ chiết khấu deal hoa hồng với Hệ thống (%) *</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="90"
+                  step="0.1"
+                  required
+                  value={newCommissionRate}
+                  onChange={(e) => setNewCommissionRate(e.target.value)}
+                  placeholder="Ví dụ: 12.5"
+                  className="w-full h-10 px-3 border rounded-xl bg-slate-50 focus:bg-white focus:outline-none text-slate-950 dark:text-white dark:bg-slate-900 border-slate-250 dark:border-slate-700"
+                />
+              </div>
+
+              <button
+                type="submit"
+                className="w-full h-11 mt-2 bg-gradient-to-r from-blue-600 to-[#13519c] text-white text-xs font-bold rounded-xl shadow-md transition hover:opacity-90 cursor-pointer"
+              >
+                Cập Nhật Hồ Sơ Dạy Học (Cần Admin Duyệt Lại)
+              </button>
+            </form>
+          </div>
+        ) : tutorStatus === "PENDING" ? (
+          <div className="space-y-4 py-4 text-center">
+            <div className="text-4xl animate-pulse">🕒</div>
+            <div className="p-3.5 bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-350 rounded-xl border border-amber-200/40 text-xs font-semibold leading-relaxed">
+              Hồ sơ xác minh và đề xuất deal của bác đang được Ban quản trị Giasu top phê duyệt. Vui lòng quay lại sau khi hồ sơ đã được duyệt để hiển thị trên trang thuê.
+            </div>
+            <div className="space-y-2 text-left bg-slate-50 dark:bg-slate-900/60 p-3.5 rounded-xl border border-slate-200/40 text-xs text-slate-500">
+              <span className="font-bold text-slate-500 block mb-1">Tài liệu đã gửi:</span>
+              <p className="truncate">✓ Ảnh chân dung cá nhân</p>
+              <p className="truncate">✓ CCCD Mặt trước</p>
+              <p className="truncate">✓ CCCD Mặt sau</p>
+              <p className="truncate">✓ Đề xuất chiết khấu hoa hồng</p>
+            </div>
+          </div>
+        ) : (
+          // NOT_SUBMITTED or REJECTED (Phase 1 upload form)
+          <form onSubmit={handleSubmitVerification} className="space-y-4 text-xs text-left max-h-[70vh] overflow-y-auto pr-1">
+            {tutorStatus === "REJECTED" && (
+              <div className="p-3 bg-rose-50 dark:bg-rose-950/20 text-rose-700 dark:text-rose-350 rounded-xl border border-rose-200/40 font-semibold leading-relaxed">
+                ⚠️ Hồ sơ trước đây đã bị từ chối. Lý do: <span className="font-bold text-rose-800 dark:text-rose-300">{tutorRejectReason || ""}</span>. Vui lòng gửi lại tài liệu mới chính xác.
+              </div>
+            )}
+
+            <div className="p-3 bg-blue-50 dark:bg-blue-950/20 text-blue-800 dark:text-blue-300 rounded-xl border border-blue-100 dark:border-blue-900/30 leading-relaxed">
+              Bác vui lòng hoàn tất tất cả thông tin hồ sơ và tải lên tài liệu xác minh bên dưới.
+            </div>
+
+            <div className="border-b pb-3 space-y-3">
+              <h4 className="font-bold text-slate-800 dark:text-slate-200 text-xs">📂 1. Tài liệu xác minh danh tính</h4>
+              <div>
+                <label className="block text-slate-500 font-semibold mb-1">Ảnh chân dung cá nhân *</label>
+                <KntechUpload
+                  accept="image/*"
+                  value={portraitFile || null}
+                  required
+                  onChange={(files) => {
+                    const file = files?.[0] || null;
+                    if (file && !file.type.startsWith("image/")) {
+                      showKntechAlert("error", "Lỗi tệp tin", "Vui lòng chỉ chọn file hình ảnh!");
+                      return;
+                    }
+                    setPortraitFile(file);
+                  }}
+                  onClear={() => setPortraitFile(null)}
+                  mainText="Kéo thả hoặc Chọn ảnh chân dung"
+                  allowedText="PNG, JPG, JPEG, and WEBP are Allowed."
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-500 font-semibold mb-1">CCCD Mặt trước *</label>
+                <KntechUpload
+                  accept="image/*"
+                  value={cccdFrontFile || null}
+                  required
+                  onChange={(files) => {
+                    const file = files?.[0] || null;
+                    if (file && !file.type.startsWith("image/")) {
+                      showKntechAlert("error", "Lỗi tệp tin", "Vui lòng chỉ chọn file hình ảnh!");
+                      return;
+                    }
+                    setCccdFrontFile(file);
+                  }}
+                  onClear={() => setCccdFrontFile(null)}
+                  mainText="Kéo thả hoặc Chọn CCCD Mặt trước"
+                  allowedText="PNG, JPG, JPEG, and WEBP are Allowed."
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-500 font-semibold mb-1">CCCD Mặt sau *</label>
+                <KntechUpload
+                  accept="image/*"
+                  value={cccdBackFile || null}
+                  required
+                  onChange={(files) => {
+                    const file = files?.[0] || null;
+                    if (file && !file.type.startsWith("image/")) {
+                      showKntechAlert("error", "Lỗi tệp tin", "Vui lòng chỉ chọn file hình ảnh!");
+                      return;
+                    }
+                    setCccdBackFile(file);
+                  }}
+                  onClear={() => setCccdBackFile(null)}
+                  mainText="Kéo thả hoặc Chọn CCCD Mặt sau"
+                  allowedText="PNG, JPG, JPEG, and WEBP are Allowed."
+                />
+              </div>
+            </div>
+
+            <div className="space-y-3 pt-2">
+              <h4 className="font-bold text-slate-800 dark:text-slate-200 text-xs">📝 2. Chi tiết hồ sơ dạy học</h4>
+
               <div>
                 <label className="block text-slate-500 mb-1 font-semibold">Trường đào tạo *</label>
                 <input
@@ -165,6 +319,21 @@ export default function TutorProfileModal({
               </div>
 
               <div>
+                <label className="block text-slate-500 mb-1 font-semibold">Đề xuất tỉ lệ chiết khấu deal hoa hồng với Hệ thống (%) *</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="90"
+                  step="0.1"
+                  required
+                  value={newCommissionRate}
+                  onChange={(e) => setNewCommissionRate(e.target.value)}
+                  placeholder="Ví dụ: 12.5"
+                  className="w-full h-10 px-3 border rounded-xl bg-slate-50 focus:bg-white focus:outline-none text-slate-950 dark:text-white dark:bg-slate-900 border-slate-250 dark:border-slate-700"
+                />
+              </div>
+
+              <div>
                 <label className="block text-slate-500 mb-1.5 font-semibold">Tùy chỉnh màu sắc/gradient thẻ Gia sư *</label>
                 <div className="grid grid-cols-2 gap-2">
                   {[
@@ -189,174 +358,14 @@ export default function TutorProfileModal({
                   ))}
                 </div>
               </div>
-
-              <div className="pt-2 border-t dark:border-slate-800">
-                <label className="block text-slate-500 mb-1 font-semibold">Đề xuất tỉ lệ chiết khấu deal hoa hồng với Hệ thống (%) *</label>
-                <div className="flex gap-2 items-center">
-                  <input
-                    type="number"
-                    min="1"
-                    max="90"
-                    step="0.1"
-                    value={newCommissionRate}
-                    onChange={(e) => setNewCommissionRate(e.target.value)}
-                    placeholder="Ví dụ: 12.5"
-                    className="flex-1 h-10 px-3 border rounded-xl bg-slate-50 focus:bg-white focus:outline-none text-slate-950 dark:text-white dark:bg-slate-900 border-slate-250 dark:border-slate-700"
-                  />
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      if (!newCommissionRate) return;
-                      try {
-                        const res = await fetch("http://localhost:5000/api/tutors/me/commission", {
-                          method: "PUT",
-                          headers: {
-                            "Content-Type": "application/json",
-                            Authorization: `Bearer ${token}`,
-                          },
-                          body: JSON.stringify({ commissionPercent: Number(newCommissionRate) }),
-                        });
-                        const json = await res.json();
-                        if (json.success) {
-                          showKntechAlert("success", "Đã gửi đề xuất", "Mức chiết khấu đề xuất đã được gửi lên hệ thống để Admin duyệt.");
-                          setNewCommissionRate("");
-                        } else {
-                          showKntechAlert("error", "Lỗi đề xuất", json.message);
-                        }
-                      } catch (err) {
-                        showKntechAlert("error", "Lỗi kết nối", "Không thể kết nối đến máy chủ.");
-                      }
-                    }}
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-4 h-10 rounded-xl cursor-pointer"
-                  >
-                    Gửi Deal %
-                  </button>
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                disabled={tutorProfileForm.subjectsToTeach.length === 0}
-                className="w-full h-11 mt-2 bg-gradient-to-r from-blue-600 to-[#13519c] text-white text-xs font-bold rounded-xl shadow-md transition hover:opacity-90 disabled:opacity-50 cursor-pointer"
-              >
-                Cập Nhật Hồ Sơ Dạy Học
-              </button>
-            </form>
-
-            {/* Phase 2: Certificates upload section */}
-            <div className="pt-4 border-t dark:border-slate-800 mt-4 space-y-3 text-left">
-              <h4 className="font-bold text-xs text-slate-800 dark:text-slate-200">
-                🎓 Tải Lên Bằng Cấp / Minh Chứng Mới (PDF, Word, Ảnh)
-              </h4>
-              <p className="text-[10px] text-slate-400">Các bác có thể cập nhật các chứng chỉ ngoại ngữ, sư phạm hoặc bằng tốt nghiệp.</p>
-              <form onSubmit={handleSubmitVerification} className="space-y-3">
-                <input
-                  type="file"
-                  multiple
-                  accept=".pdf,.doc,.docx,image/*"
-                  onChange={(e) => setCertificatesFiles(e.target.files)}
-                  className="w-full text-xs border border-dashed border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 rounded-xl p-2.5 file:mr-3 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 dark:file:bg-slate-800 dark:file:text-blue-300 cursor-pointer"
-                  required
-                />
-                <button
-                  type="submit"
-                  disabled={submittingVerification}
-                  className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg transition text-xs cursor-pointer"
-                >
-                  {submittingVerification ? "Đang tải lên..." : "Tải Lên Chứng Chỉ"}
-                </button>
-              </form>
-            </div>
-          </div>
-        ) : tutorStatus === "PENDING" ? (
-          <div className="space-y-4 py-4 text-center">
-            <div className="text-4xl animate-pulse">🕒</div>
-            <div className="p-3.5 bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-350 rounded-xl border border-amber-200/40 text-xs font-semibold leading-relaxed">
-              Hồ sơ xác minh của bác đang được Ban quản trị Giasu top phê duyệt. Vui lòng quay lại sau khi hồ sơ đã được duyệt để thiết lập hồ sơ dạy học.
-            </div>
-            <div className="space-y-2 text-left bg-slate-50 dark:bg-slate-900/60 p-3.5 rounded-xl border border-slate-200/40 text-xs text-slate-500">
-              <span className="font-bold text-slate-500 block mb-1">Tài liệu đã gửi:</span>
-              <p className="truncate">✓ Ảnh chân dung cá nhân</p>
-              <p className="truncate">✓ CCCD Mặt trước</p>
-              <p className="truncate">✓ CCCD Mặt sau</p>
-            </div>
-          </div>
-        ) : (
-          // NOT_SUBMITTED or REJECTED (Phase 1 upload form)
-          <form onSubmit={handleSubmitVerification} className="space-y-4 text-xs text-left">
-            {tutorStatus === "REJECTED" && (
-              <div className="p-3 bg-rose-50 dark:bg-rose-950/20 text-rose-700 dark:text-rose-350 rounded-xl border border-rose-200/40 font-semibold leading-relaxed">
-                ⚠️ Hồ sơ trước đây đã bị từ chối. Lý do: <span className="font-bold text-rose-800 dark:text-rose-300">{tutorRejectReason}</span>. Vui lòng gửi lại tài liệu mới chính xác.
-              </div>
-            )}
-
-            <div className="p-3 bg-blue-50 dark:bg-blue-950/20 text-blue-800 dark:text-blue-300 rounded-xl border border-blue-100 dark:border-blue-900/30 leading-relaxed">
-              Bác cần gửi thông tin minh chứng chân dung và ảnh chụp CCCD 2 mặt để xác minh danh tính gia sư.
-            </div>
-
-            <div>
-              <label className="block text-slate-500 font-semibold mb-1">1. Ảnh chân dung cá nhân *</label>
-              <input
-                type="file"
-                required
-                accept="image/*"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file && !file.type.startsWith("image/")) {
-                    showKntechAlert("error", "Lỗi tệp tin", "Vui lòng chỉ chọn file hình ảnh!");
-                    e.target.value = "";
-                    return;
-                  }
-                  setPortraitFile(file || null);
-                }}
-                className="w-full text-xs border border-dashed border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 rounded-xl p-2.5 file:mr-3 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 dark:file:bg-slate-800 dark:file:text-blue-300 cursor-pointer"
-              />
-            </div>
-
-            <div>
-              <label className="block text-slate-500 font-semibold mb-1">2. CCCD Mặt trước *</label>
-              <input
-                type="file"
-                required
-                accept="image/*"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file && !file.type.startsWith("image/")) {
-                    showKntechAlert("error", "Lỗi tệp tin", "Vui lòng chỉ chọn file hình ảnh!");
-                    e.target.value = "";
-                    return;
-                  }
-                  setCccdFrontFile(file || null);
-                }}
-                className="w-full text-xs border border-dashed border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 rounded-xl p-2.5 file:mr-3 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 dark:file:bg-slate-800 dark:file:text-blue-300 cursor-pointer"
-              />
-            </div>
-
-            <div>
-              <label className="block text-slate-500 font-semibold mb-1">3. CCCD Mặt sau *</label>
-              <input
-                type="file"
-                required
-                accept="image/*"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file && !file.type.startsWith("image/")) {
-                    showKntechAlert("error", "Lỗi tệp tin", "Vui lòng chỉ chọn file hình ảnh!");
-                    e.target.value = "";
-                    return;
-                  }
-                  setCccdBackFile(file || null);
-                }}
-                className="w-full text-xs border border-dashed border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 rounded-xl p-2.5 file:mr-3 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 dark:file:bg-slate-800 dark:file:text-blue-300 cursor-pointer"
-              />
             </div>
 
             <button
               type="submit"
-              disabled={submittingVerification}
+              disabled={submittingVerification || tutorProfileForm.subjectsToTeach.length === 0}
               className="w-full h-11 bg-gradient-to-r from-blue-600 to-[#13519c] text-white text-xs font-bold rounded-xl shadow-md transition hover:opacity-90 disabled:opacity-50 cursor-pointer flex items-center justify-center"
             >
-              {submittingVerification ? "Đang gửi thông tin..." : "Gửi Xác Minh Hồ Sơ"}
+              {submittingVerification ? "Đang gửi hồ sơ..." : "Gửi Hồ Sơ & Đề Xuất Deal"}
             </button>
           </form>
         )}

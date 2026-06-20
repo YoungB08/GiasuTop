@@ -1,4 +1,5 @@
 import React from "react";
+import { getAvatarUrl } from "../../utils/avatar";
 
 type TutorDetailModalProps = {
   viewingTutor: any;
@@ -9,7 +10,7 @@ type TutorDetailModalProps = {
   setChatActivePartner: (partner: any) => void;
   setHomeSubTab: (tab: any) => void;
   setSelectedTutor: (tutor: any) => void;
-  openAuth: (tab: "login" | "register", role?: "USER" | "TUTOR") => void;
+  openAuth: (tab: "login" | "register", role?: any) => void;
   formatVND: (val: any) => string;
 };
 
@@ -33,9 +34,9 @@ export default function TutorDetailModal({
         <div className="flex justify-between items-start border-b pb-3.5">
           <div className="flex items-center gap-3">
             <img
-              src={`https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(viewingTutor.email)}`}
+              src={getAvatarUrl(viewingTutor)}
               alt={viewingTutor.full_name}
-              className="h-14 w-14 rounded-2xl border-2 border-blue-500 bg-slate-50 shadow-sm"
+              className="h-14 w-14 rounded-2xl border-2 border-blue-500 bg-slate-50 shadow-sm object-cover"
             />
             <div>
               <h3 className="text-sm font-bold text-slate-955 dark:text-white flex items-center gap-1.5">

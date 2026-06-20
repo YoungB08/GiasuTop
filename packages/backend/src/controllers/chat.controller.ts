@@ -8,7 +8,7 @@ export async function listChatMessages(_req: any, res: Response): Promise<any> {
     const [rows] = await pool.query(
       `SELECT cm.id, cm.user_id, cm.message, cm.created_at,
               cm.file_url, cm.file_name, cm.file_type,
-              u.full_name, u.email, u.role 
+              u.full_name, u.email, u.role, u.avatar_url 
        FROM chat_messages cm 
        JOIN users u ON u.id = cm.user_id 
        ORDER BY cm.created_at ASC LIMIT 200`

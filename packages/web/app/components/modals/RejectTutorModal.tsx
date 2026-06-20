@@ -5,7 +5,7 @@ type RejectTutorModalProps = {
   setRejectingTutorId: (id: string | null) => void;
   adminRejectReason: string;
   setAdminRejectReason: (reason: string) => void;
-  handleDecideTutor: (id: string, status: string, reason?: string) => void;
+  handleDecideTutor: (id: string, status: "APPROVED" | "REJECTED", reason?: string) => void;
 };
 
 export default function RejectTutorModal({

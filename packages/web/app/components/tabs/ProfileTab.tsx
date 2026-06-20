@@ -1,11 +1,12 @@
-import React from "react";
+import React, { useRef } from "react";
+import { getAvatarUrl } from "../../utils/avatar";
 
 type ProfileTabProps = {
   tutorProfileToView: any;
   setTutorProfileToView: (tutor: any) => void;
   formatVND: (val: any) => string;
   user: any;
-  openAuth: (tab: "login" | "register", role?: "USER" | "TUTOR") => void;
+  openAuth: (tab: "login" | "register", role?: any) => void;
   showKntechAlert: (type: "success" | "error" | "info" | "warning", title: string, message: string, image?: string) => void;
 };
 
@@ -17,6 +18,8 @@ export default function ProfileTab({
   openAuth,
   showKntechAlert,
 }: ProfileTabProps) {
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+
   return (
     <div className="space-y-6 pb-20 md:pb-0">
       {tutorProfileToView ? (
@@ -29,8 +32,8 @@ export default function ProfileTab({
           </button>
           <div className="flex flex-col items-center gap-4 text-center mt-4">
             <img
-              src={`https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(tutorProfileToView.email)}`}
-              className="w-24 h-24 rounded-full border-4 border-blue-500 bg-slate-55"
+              src={getAvatarUrl(tutorProfileToView)}
+              className="w-24 h-24 rounded-full border-4 border-blue-500 bg-slate-55 object-cover"
               alt=""
             />
             <div>
@@ -135,13 +138,31 @@ export default function ProfileTab({
             <div className="flex flex-col items-center gap-4 md:w-1/3">
               <div className="relative">
                 <img
-                  src={`https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(user.email)}`}
-                  className="w-32 h-32 rounded-full bg-slate-100 border-4 border-white shadow-lg"
+                  src={getAvatarUrl(user)}
+                  className="w-32 h-32 rounded-full bg-slate-100 border-4 border-white shadow-lg object-cover"
                   alt="Avatar"
                 />
-                <button className="absolute bottom-0 right-0 bg-[#13519c] text-white p-2 rounded-full shadow hover:bg-blue-800 cursor-pointer">
+                <button
+                  type="button"
+                  onClick={() => avatarInputRef.current?.click()}
+                  className="absolute bottom-0 right-0 bg-[#13519c] text-white p-2 rounded-full shadow hover:bg-blue-800 cursor-pointer border-none"
+                  title="Tải lên ảnh đại diện"
+                >
                   <i className="fa-solid fa-camera"></i>
                 </button>
+                <input
+                  ref={avatarInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      showKntechAlert("info", "Thông báo", `Đã chọn ảnh: ${file.name}`);
+                    }
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                />
               </div>
               <div className="text-center">
                 <div className="font-bold text-lg dark:text-white">{user.fullName}</div>

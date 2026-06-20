@@ -44,6 +44,17 @@ export default function AdminEditUserModal({
           </div>
 
           <div>
+            <label className="block text-xs font-semibold text-slate-500 mb-1">Tên đăng nhập</label>
+            <input
+              type="text"
+              required
+              value={userForm.username || ""}
+              onChange={(e) => setUserForm({ ...userForm, username: e.target.value.toLowerCase().replace(/[^a-z0-9_.]/g, "") })}
+              className="h-10 w-full rounded-xl border border-slate-200 px-3 text-xs bg-slate-50 focus:bg-white focus:outline-none text-slate-900 dark:bg-slate-900 dark:border-slate-700 dark:text-white"
+            />
+          </div>
+
+          <div>
             <label className="block text-xs font-semibold text-slate-500 mb-1">Địa chỉ Email</label>
             <input
               type="email"

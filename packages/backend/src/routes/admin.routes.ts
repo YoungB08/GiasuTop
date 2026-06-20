@@ -11,6 +11,7 @@ import {
   listAllUsers,
   updateUserAdmin,
   getSystemStats,
+  getDashboardDetails,
   addSubject,
   updateSubject,
   deleteSubject,
@@ -42,6 +43,7 @@ router.get("/logs", listSystemLogs);
 router.get("/users", listAllUsers);
 router.put("/users/:userId", updateUserAdmin);
 router.get("/stats", getSystemStats);
+router.get("/dashboard-details", getDashboardDetails);
 
 // Subjects management
 router.get("/subjects", listSubjects);
@@ -58,10 +60,6 @@ router.delete("/news/:id", deleteNews);
 router.get("/documents/pending", listPendingDocuments);
 router.post("/documents/:id/decide", decideDocument);
 router.delete("/documents/:id", deleteDocument);
-
-// Proposed Commission deals
-router.get("/commissions/pending", listProposedCommissions);
-router.post("/commissions/decide", decideProposedCommission);
 
 export default router;
 

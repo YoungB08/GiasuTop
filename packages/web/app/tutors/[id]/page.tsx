@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { getAvatarUrl } from "../../utils/avatar";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -99,9 +100,9 @@ export default async function TutorDetailPage({ params }: Props) {
                 <div className="absolute -bottom-10 left-6">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
-                    src={tutor.avatar_url || `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(tutor.email)}`}
+                    src={getAvatarUrl(tutor)}
                     alt={tutor.full_name}
-                    className="h-20 w-20 rounded-2xl border-4 border-white dark:border-[#1a0d0e] shadow-xl bg-slate-100"
+                    className="h-20 w-20 rounded-2xl border-4 border-white dark:border-[#1a0d0e] shadow-xl bg-slate-100 object-cover"
                   />
                 </div>
               </div>

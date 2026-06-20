@@ -129,8 +129,8 @@ export function CustomAlert({ isOpen, type, title, message, imageUrl, onClose }:
         <div className="absolute bottom-0 left-0 right-0 h-1.5 bg-slate-100 dark:bg-slate-800/80 overflow-hidden">
           <div
             className={`h-full transition-all ease-linear ${type === "success" ? "bg-emerald-500" :
-                type === "warning" ? "bg-amber-500" :
-                  type === "error" ? "bg-rose-500" : "bg-blue-500"
+              type === "warning" ? "bg-amber-500" :
+                type === "error" ? "bg-rose-500" : "bg-blue-500"
               }`}
             style={{
               width: `${progress}%`,
@@ -170,71 +170,4 @@ export function AlertCustomizer({ onTestAlert }: { onTestAlert: (type: AlertType
     };
     reader.readAsDataURL(file);
   };
-
-  return (
-    <div className="bg-white dark:bg-[#111827] rounded-2xl p-5 border border-slate-200/50 dark:border-slate-800 space-y-4 shadow-sm text-xs max-w-md">
-      <h4 className="font-bold text-slate-800 dark:text-white flex items-center gap-1.5 border-b pb-2">
-        ⚙️ Bộ Thử Nghiệm Alert Tùy Chỉnh (Custom Alert)
-      </h4>
-
-      {errorText && (
-        <div className="p-2.5 bg-rose-50 text-rose-600 rounded-lg font-semibold text-[11px]">
-          ⚠️ {errorText}
-        </div>
-      )}
-
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="block text-slate-500 mb-1 font-semibold">Tiêu đề Alert</label>
-          <input
-            type="text"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            className="w-full h-8 px-2.5 border rounded-lg bg-slate-50 focus:bg-white text-slate-900 dark:text-white dark:bg-slate-900 focus:outline-none"
-          />
-        </div>
-        <div>
-          <label className="block text-slate-500 mb-1 font-semibold">Loại Alert</label>
-          <select
-            value={type}
-            onChange={(e) => setType(e.target.value as AlertType)}
-            className="w-full h-8 border rounded-lg bg-slate-50 text-slate-900 dark:text-white dark:bg-slate-900 focus:outline-none px-1.5"
-          >
-            <option value="success">Success (Thành công)</option>
-            <option value="warning">Warning (Cảnh báo)</option>
-            <option value="error">Error (Thất bại)</option>
-            <option value="info">Info (Thông tin)</option>
-          </select>
-        </div>
-      </div>
-
-      <div>
-        <label className="block text-slate-500 mb-1 font-semibold">Thông điệp chi tiết</label>
-        <textarea
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          rows={2}
-          className="w-full p-2.5 border rounded-lg bg-slate-50 focus:bg-white text-slate-900 dark:text-white dark:bg-slate-900 focus:outline-none"
-        />
-      </div>
-
-      <div>
-        <label className="block text-slate-500 mb-1 font-semibold">Ảnh minh họa tùy chọn (chỉ được là tệp ảnh)</label>
-        <input
-          type="file"
-          accept="image/*"
-          onChange={handleImageChange}
-          className="w-full text-[11px]"
-        />
-      </div>
-
-      <button
-        type="button"
-        onClick={() => onTestAlert(type, title, message, customImage)}
-        className="w-full py-2 bg-gradient-to-r from-blue-600 to-[#13519c] text-white font-bold rounded-lg hover:opacity-90 transition shadow cursor-pointer text-center"
-      >
-        🎯 Trực Quan Hóa Alert
-      </button>
-    </div>
-  );
 }

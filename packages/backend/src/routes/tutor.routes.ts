@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { bookAppointment, getTutors, getTutorById, getTutorReviews, createTutorReview } from "../controllers/tutor.controller";
 import { requireAuth } from "../middlewares/auth";
-import { upsertMyTutorProfile, uploadMyTutorDocuments, getMyTutorStatus, submitTutorVerification, getMyTutorDocumentFile, proposeCommission } from "../controllers/tutorProfile.controller";
+import { upsertMyTutorProfile, uploadMyTutorDocuments, getMyTutorStatus, submitTutorVerification, getMyTutorDocumentFile, proposeCommission, getMyTutorDocumentFileByFilename } from "../controllers/tutorProfile.controller";
 import { createTutorUpload } from "../utils/upload";
 
 const router = Router();
@@ -9,6 +9,7 @@ router.get('/', getTutors);
 router.get('/:tutorId', getTutorById);
 router.post('/book', bookAppointment);
 router.get("/documents/:documentId", requireAuth, getMyTutorDocumentFile);
+router.get("/me/documents/file/:filename", requireAuth, getMyTutorDocumentFileByFilename);
 router.get("/:tutorId/reviews", getTutorReviews);
 router.post("/:tutorId/reviews", createTutorReview);
 router.put("/me/commission", requireAuth, proposeCommission);

@@ -1,21 +1,21 @@
 -- Seed demo data (DO NOT use in production).
 
 -- Users
-INSERT INTO users (id, full_name, email, password_hash, role, phone, avatar_url, status)
+INSERT INTO users (id, full_name, username, email, password_hash, role, phone, avatar_url, status)
 VALUES
-('11111111-1111-1111-1111-111111111111', 'Admin GiasuTop', 'admin@giasu.local', '$2b$12$oL7/etpjSvnNkHy1JeN3IurIeyeZYAnrWPgWY2vNyUYhHhFhstI42', 'ADMIN', '0999999999', NULL, 'ACTIVE'),
-('tutor-8888-8888-8888-888888888888', 'Gia sư Demo', 'tutor@giasu.local', '$2b$12$oL7/etpjSvnNkHy1JeN3IurIeyeZYAnrWPgWY2vNyUYhHhFhstI42', 'TUTOR', '0900000000', NULL, 'ACTIVE'),
-('33333333-3333-3333-3333-333333333333', 'Học sinh Demo', 'student@giasu.local', '$2b$12$oL7/etpjSvnNkHy1JeN3IurIeyeZYAnrWPgWY2vNyUYhHhFhstI42', 'STUDENT', '0911111111', NULL, 'ACTIVE'),
-('tutor-0000-0000-0000-000000000001', 'Nguyễn Văn Toán', 'toan@giasu.local', '$2b$12$oL7/etpjSvnNkHy1JeN3IurIeyeZYAnrWPgWY2vNyUYhHhFhstI42', 'TUTOR', '0900000001', NULL, 'ACTIVE'),
-('tutor-0000-0000-0000-000000000002', 'Trần Thị Lý', 'ly@giasu.local', '$2b$12$oL7/etpjSvnNkHy1JeN3IurIeyeZYAnrWPgWY2vNyUYhHhFhstI42', 'TUTOR', '0900000002', NULL, 'ACTIVE'),
-('tutor-0000-0000-0000-000000000003', 'Lê Hoàng Hóa', 'hoa@giasu.local', '$2b$12$oL7/etpjSvnNkHy1JeN3IurIeyeZYAnrWPgWY2vNyUYhHhFhstI42', 'TUTOR', '0900000003', NULL, 'ACTIVE'),
-('tutor-0000-0000-0000-000000000004', 'Phạm Minh Văn', 'van@giasu.local', '$2b$12$oL7/etpjSvnNkHy1JeN3IurIeyeZYAnrWPgWY2vNyUYhHhFhstI42', 'TUTOR', '0900000004', NULL, 'ACTIVE'),
-('tutor-0000-0000-0000-000000000005', 'Vũ Quốc Anh', 'anh@giasu.local', '$2b$12$oL7/etpjSvnNkHy1JeN3IurIeyeZYAnrWPgWY2vNyUYhHhFhstI42', 'TUTOR', '0900000005', NULL, 'ACTIVE'),
-('tutor-0000-0000-0000-000000000006', 'Hoàng Ngọc Sinh', 'sinh@giasu.local', '$2b$12$oL7/etpjSvnNkHy1JeN3IurIeyeZYAnrWPgWY2vNyUYhHhFhstI42', 'TUTOR', '0900000006', NULL, 'ACTIVE'),
-('tutor-0000-0000-0000-000000000007', 'Đặng Thùy Sử', 'su@giasu.local', '$2b$12$oL7/etpjSvnNkHy1JeN3IurIeyeZYAnrWPgWY2vNyUYhHhFhstI42', 'TUTOR', '0900000007', NULL, 'ACTIVE'),
-('tutor-0000-0000-0000-000000000008', 'Ngô Phương Địa', 'dia@giasu.local', '$2b$12$oL7/etpjSvnNkHy1JeN3IurIeyeZYAnrWPgWY2vNyUYhHhFhstI42', 'TUTOR', '0900000008', NULL, 'ACTIVE'),
-('tutor-0000-0000-0000-000000000009', 'Đỗ Thành Coder', 'coder@giasu.local', '$2b$12$oL7/etpjSvnNkHy1JeN3IurIeyeZYAnrWPgWY2vNyUYhHhFhstI42', 'TUTOR', '0900000009', NULL, 'ACTIVE'),
-('tutor-0000-0000-0000-000000000010', 'Bùi Xuân Nhạc', 'nhac@giasu.local', '$2b$12$oL7/etpjSvnNkHy1JeN3IurIeyeZYAnrWPgWY2vNyUYhHhFhstI42', 'TUTOR', '0900000010', NULL, 'ACTIVE');
+('11111111-1111-1111-1111-111111111111', 'Admin GiasuTop', 'admin', 'admin@giasu.local', '$2b$12$oL7/etpjSvnNkHy1JeN3IurIeyeZYAnrWPgWY2vNyUYhHhFhstI42', 'ADMIN', '0999999999', NULL, 'ACTIVE'),
+('tutor-8888-8888-8888-888888888888', 'Gia sư Demo', 'tutor_demo', 'tutor@giasu.local', '$2b$12$oL7/etpjSvnNkHy1JeN3IurIeyeZYAnrWPgWY2vNyUYhHhFhstI42', 'TUTOR', '0900000000', NULL, 'ACTIVE'),
+('33333333-3333-3333-3333-333333333333', 'Học sinh Demo', 'student_demo', 'student@giasu.local', '$2b$12$oL7/etpjSvnNkHy1JeN3IurIeyeZYAnrWPgWY2vNyUYhHhFhstI42', 'STUDENT', '0911111111', NULL, 'ACTIVE'),
+('tutor-0000-0000-0000-000000000001', 'Nguyễn Văn Toán', 'vantoan', 'toan@giasu.local', '$2b$12$oL7/etpjSvnNkHy1JeN3IurIeyeZYAnrWPgWY2vNyUYhHhFhstI42', 'TUTOR', '0900000001', NULL, 'ACTIVE'),
+('tutor-0000-0000-0000-000000000002', 'Trần Thị Lý', 'thily', 'ly@giasu.local', '$2b$12$oL7/etpjSvnNkHy1JeN3IurIeyeZYAnrWPgWY2vNyUYhHhFhstI42', 'TUTOR', '0900000002', NULL, 'ACTIVE'),
+('tutor-0000-0000-0000-000000000003', 'Lê Hoàng Hóa', 'hoanghoa', 'hoa@giasu.local', '$2b$12$oL7/etpjSvnNkHy1JeN3IurIeyeZYAnrWPgWY2vNyUYhHhFhstI42', 'TUTOR', '0900000003', NULL, 'ACTIVE'),
+('tutor-0000-0000-0000-000000000004', 'Phạm Minh Văn', 'minhvan', 'van@giasu.local', '$2b$12$oL7/etpjSvnNkHy1JeN3IurIeyeZYAnrWPgWY2vNyUYhHhFhstI42', 'TUTOR', '0900000004', NULL, 'ACTIVE'),
+('tutor-0000-0000-0000-000000000005', 'Vũ Quốc Anh', 'quocanh', 'anh@giasu.local', '$2b$12$oL7/etpjSvnNkHy1JeN3IurIeyeZYAnrWPgWY2vNyUYhHhFhstI42', 'TUTOR', '0900000005', NULL, 'ACTIVE'),
+('tutor-0000-0000-0000-000000000006', 'Hoàng Ngọc Sinh', 'ngocsinh', 'sinh@giasu.local', '$2b$12$oL7/etpjSvnNkHy1JeN3IurIeyeZYAnrWPgWY2vNyUYhHhFhstI42', 'TUTOR', '0900000006', NULL, 'ACTIVE'),
+('tutor-0000-0000-0000-000000000007', 'Đặng Thùy Sử', 'thuysu', 'su@giasu.local', '$2b$12$oL7/etpjSvnNkHy1JeN3IurIeyeZYAnrWPgWY2vNyUYhHhFhstI42', 'TUTOR', '0900000007', NULL, 'ACTIVE'),
+('tutor-0000-0000-0000-000000000008', 'Ngô Phương Địa', 'phuongdia', 'dia@giasu.local', '$2b$12$oL7/etpjSvnNkHy1JeN3IurIeyeZYAnrWPgWY2vNyUYhHhFhstI42', 'TUTOR', '0900000008', NULL, 'ACTIVE'),
+('tutor-0000-0000-0000-000000000009', 'Đỗ Thành Coder', 'thanhcoder', 'coder@giasu.local', '$2b$12$oL7/etpjSvnNkHy1JeN3IurIeyeZYAnrWPgWY2vNyUYhHhFhstI42', 'TUTOR', '0900000009', NULL, 'ACTIVE'),
+('tutor-0000-0000-0000-000000000010', 'Bùi Xuân Nhạc', 'xuannhac', 'nhac@giasu.local', '$2b$12$oL7/etpjSvnNkHy1JeN3IurIeyeZYAnrWPgWY2vNyUYhHhFhstI42', 'TUTOR', '0900000010', NULL, 'ACTIVE');;
 
 -- Wallet accounts
 INSERT INTO wallet_accounts (user_id, available_balance, holding_balance)

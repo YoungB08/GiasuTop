@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { getAvatarUrl } from "../utils/avatar";
 
 interface Contact {
   id: string;
@@ -24,6 +25,8 @@ interface Message {
   sender_name?: string;
   sender_email?: string;
   sender_role?: string;
+  avatar_url?: string | null;
+  avatarUrl?: string | null;
   file_url?: string | null;
   file_name?: string | null;
   file_type?: string | null;
@@ -346,9 +349,9 @@ export function MessengerChat({ token, currentUser, chatActivePartner, onClearAc
                     <div className="h-10 w-10 rounded-full bg-gradient-to-tr from-[#13519c] to-indigo-500 flex items-center justify-center text-white text-base font-black select-none">🌎</div>
                   ) : (
                     <img
-                      src={`https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(contact.email)}`}
+                      src={getAvatarUrl(contact)}
                       alt={contact.full_name}
-                      className="h-10 w-10 rounded-full border bg-slate-50"
+                      className="h-10 w-10 rounded-full border bg-slate-50 object-cover"
                     />
                   )}
                   <div className={`absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-white dark:border-slate-900 ${contact.id === "global" ? "bg-blue-500" : "bg-emerald-500"}`} />
@@ -404,9 +407,9 @@ export function MessengerChat({ token, currentUser, chatActivePartner, onClearAc
                   <div className="h-9 w-9 rounded-full bg-gradient-to-tr from-[#13519c] to-indigo-500 flex items-center justify-center text-white font-black select-none">🌎</div>
                 ) : (
                   <img
-                    src={`https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(activeContact.email)}`}
+                    src={getAvatarUrl(activeContact)}
                     alt={activeContact.full_name}
-                    className="h-9 w-9 rounded-full border bg-slate-50"
+                    className="h-9 w-9 rounded-full border bg-slate-50 object-cover"
                   />
                 )}
                 <div>
@@ -445,9 +448,14 @@ export function MessengerChat({ token, currentUser, chatActivePartner, onClearAc
                     <div key={msg.id} className={`flex items-end gap-2 text-xs ${isMe ? "justify-end" : "justify-start"}`}>
                       {!isMe && !isConsecutiveNext ? (
                         <img
-                          src={`https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(msg.sender_email || activeContact.email)}`}
+                          src={(activeContact.id !== "global" && !msg.avatar_url && !msg.avatarUrl)
+                            ? getAvatarUrl(activeContact)
+                            : getAvatarUrl({
+                                avatar_url: msg.avatar_url || msg.avatarUrl,
+                                email: msg.sender_email || activeContact.email
+                              })}
                           alt="AVT"
-                          className="h-6 w-6 rounded-full bg-slate-100 border shadow-sm shrink-0 self-end"
+                          className="h-6 w-6 rounded-full bg-slate-100 border shadow-sm shrink-0 self-end object-cover"
                         />
                       ) : !isMe ? <div className="w-6 shrink-0" /> : null}
 

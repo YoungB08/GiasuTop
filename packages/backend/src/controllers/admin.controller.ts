@@ -6,9 +6,10 @@ import { walletReleaseHolding } from "../services/wallet.service";
 import fs from "fs";
 import { assertDocumentFileIsSafe } from "../utils/upload";
 
+
 export async function listPendingTutors(_req: AuthedRequest, res: Response) {
   const [rows]: any = await pool.query(
-    "SELECT tp.user_id, tp.bio, tp.school, tp.major, tp.year_of_study, tp.hourly_rate, tp.subjects_to_teach, tp.is_verified, u.full_name, u.email, u.phone, u.avatar_url, tp.reject_reason FROM tutor_profiles tp JOIN users u ON u.id = tp.user_id WHERE tp.is_verified = 'PENDING' ORDER BY tp.created_at DESC"
+    "SELECT tp.user_id, tp.bio, tp.school, tp.major, tp.year_of_study, tp.hourly_rate, tp.subjects_to_teach, tp.is_verified, u.full_name, u.email, u.phone, u.avatar_url, tp.reject_reason, tp.commission_percent, tp.proposed_commission_percent FROM tutor_profiles tp JOIN users u ON u.id = tp.user_id WHERE tp.is_verified = 'PENDING' ORDER BY tp.created_at DESC"
   );
   
   for (const t of rows) {
@@ -27,11 +28,19 @@ const DecideTutorSchema = z.object({
 
 export async function decideTutor(req: AuthedRequest, res: Response) {
   const input = DecideTutorSchema.parse(req.body);
-  await pool.query("UPDATE tutor_profiles SET is_verified = ?, reject_reason = ? WHERE user_id = ?", [
-    input.decision,
-    input.decision === "REJECTED" ? input.rejectReason ?? "Rejected" : null,
-    input.tutorUserId,
-  ]);
+  if (input.decision === "APPROVED") {
+    const [rows]: any = await pool.query("SELECT proposed_commission_percent FROM tutor_profiles WHERE user_id = ?", [input.tutorUserId]);
+    const proposed = rows[0]?.proposed_commission_percent;
+    await pool.query(
+      "UPDATE tutor_profiles SET is_verified = 'APPROVED', reject_reason = NULL, commission_percent = COALESCE(?, commission_percent), proposed_commission_percent = NULL WHERE user_id = ?",
+      [proposed, input.tutorUserId]
+    );
+  } else {
+    await pool.query(
+      "UPDATE tutor_profiles SET is_verified = 'REJECTED', reject_reason = ?, proposed_commission_percent = NULL WHERE user_id = ?",
+      [input.rejectReason ?? "Rejected", input.tutorUserId]
+    );
+  }
   return res.json({ success: true });
 }
 
@@ -143,7 +152,7 @@ export async function listSystemLogs(req: AuthedRequest, res: Response): Promise
 export async function listAllUsers(req: AuthedRequest, res: Response): Promise<any> {
   try {
     const [rows] = await pool.query(
-      "SELECT id, full_name, email, role, phone, avatar_url, status, created_at FROM users ORDER BY created_at DESC"
+      "SELECT id, full_name, username, email, role, phone, avatar_url, status, created_at FROM users ORDER BY created_at DESC"
     );
     return res.json({ success: true, data: rows });
   } catch (error: any) {
@@ -155,7 +164,7 @@ import bcrypt from "bcryptjs";
 
 export async function updateUserAdmin(req: AuthedRequest, res: Response): Promise<any> {
   const { userId } = req.params;
-  const { fullName, email, phone, role, status, password } = req.body;
+  const { fullName, email, username, phone, role, status, password } = req.body;
 
   try {
     // Check if user exists
@@ -164,16 +173,28 @@ export async function updateUserAdmin(req: AuthedRequest, res: Response): Promis
       return res.status(404).json({ success: false, message: "User not found" });
     }
 
+    // Check username conflict if changing
+    const normalizedUsername = username ? username.toLowerCase().trim() : null;
+    if (normalizedUsername) {
+      const [existsUsername]: any = await pool.query(
+        "SELECT id FROM users WHERE username = ? AND id != ? LIMIT 1",
+        [normalizedUsername, userId]
+      );
+      if (existsUsername.length > 0) {
+        return res.status(400).json({ success: false, message: "Username already exists" });
+      }
+    }
+
     if (password && password.trim() !== "") {
       const passwordHash = await bcrypt.hash(password, 12);
       await pool.query(
-        "UPDATE users SET full_name = COALESCE(?, full_name), email = COALESCE(?, email), phone = COALESCE(?, phone), role = COALESCE(?, role), status = COALESCE(?, status), password_hash = ? WHERE id = ?",
-        [fullName ?? null, email ?? null, phone ?? null, role ?? null, status ?? null, passwordHash, userId]
+        "UPDATE users SET full_name = COALESCE(?, full_name), email = COALESCE(?, email), username = ?, phone = COALESCE(?, phone), role = COALESCE(?, role), status = COALESCE(?, status), password_hash = ? WHERE id = ?",
+        [fullName ?? null, email ?? null, normalizedUsername, phone ?? null, role ?? null, status ?? null, passwordHash, userId]
       );
     } else {
       await pool.query(
-        "UPDATE users SET full_name = COALESCE(?, full_name), email = COALESCE(?, email), phone = COALESCE(?, phone), role = COALESCE(?, role), status = COALESCE(?, status) WHERE id = ?",
-        [fullName ?? null, email ?? null, phone ?? null, role ?? null, status ?? null, userId]
+        "UPDATE users SET full_name = COALESCE(?, full_name), email = COALESCE(?, email), username = ?, phone = COALESCE(?, phone), role = COALESCE(?, role), status = COALESCE(?, status) WHERE id = ?",
+        [fullName ?? null, email ?? null, normalizedUsername, phone ?? null, role ?? null, status ?? null, userId]
       );
     }
 
@@ -491,6 +512,79 @@ export async function decideProposedCommission(req: AuthedRequest, res: Response
     return res.json({ success: true, message: "Đã xử lý đề xuất điều chỉnh phần trăm chiết khấu." });
   } catch (error: any) {
     return res.status(400).json({ success: false, message: error.message });
+  }
+}
+
+export async function getDashboardDetails(req: AuthedRequest, res: Response): Promise<any> {
+  try {
+    const [tutors]: any = await pool.query(`
+      SELECT tp.user_id, u.full_name, u.email, u.phone, tp.school, tp.major, tp.year_of_study, tp.hourly_rate, tp.commission_percent, tp.is_verified, tp.created_at
+      FROM tutor_profiles tp
+      JOIN users u ON u.id = tp.user_id
+      ORDER BY tp.created_at DESC
+    `);
+
+    const [students]: any = await pool.query(`
+      SELECT id, full_name, email, phone, status, created_at
+      FROM users
+      WHERE role = 'STUDENT'
+      ORDER BY created_at DESC
+    `);
+
+    const [appointments]: any = await pool.query(`
+      SELECT a.id, a.start_time, a.end_time, a.price_paid, a.status, a.payment_status, a.created_at,
+             t.full_name as tutor_name, s.full_name as student_name,
+             tp.commission_percent
+      FROM appointments a
+      JOIN users t ON t.id = a.tutor_id
+      JOIN users s ON s.id = a.student_id
+      JOIN tutor_profiles tp ON tp.user_id = a.tutor_id
+      ORDER BY a.created_at DESC
+    `);
+
+    const [payments]: any = await pool.query(`
+      SELECT a.id, a.price_paid, a.payment_status, a.created_at,
+             t.full_name as tutor_name, s.full_name as student_name,
+             tp.commission_percent,
+             (a.price_paid * tp.commission_percent / 100.0) as commission_amount
+      FROM appointments a
+      JOIN users t ON t.id = a.tutor_id
+      JOIN users s ON s.id = a.student_id
+      JOIN tutor_profiles tp ON tp.user_id = a.tutor_id
+      WHERE a.payment_status IN ('HOLDING', 'RELEASED')
+      ORDER BY a.created_at DESC
+    `);
+
+    const totalTutors = tutors.length;
+    const totalStudents = students.length;
+    const totalAppointments = appointments.length;
+
+    let totalRevenue = 0;
+    let totalCommission = 0;
+
+    payments.forEach((p: any) => {
+      totalRevenue += Number(p.price_paid || 0);
+      totalCommission += Number(p.commission_amount || 0);
+    });
+
+    return res.json({
+      success: true,
+      data: {
+        summary: {
+          totalTutors,
+          totalStudents,
+          totalAppointments,
+          totalRevenue,
+          totalCommission
+        },
+        tutors,
+        students,
+        appointments,
+        payments
+      }
+    });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
   }
 }
 

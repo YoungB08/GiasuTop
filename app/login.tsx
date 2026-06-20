@@ -15,7 +15,7 @@ export default function LoginScreen() {
 
   const handleLogin = async () => {
     if (!email || !password) {
-      Alert.alert('Lỗi', 'Vui lòng nhập đầy đủ email và mật khẩu');
+      Alert.alert('Lỗi', 'Vui lòng nhập đầy đủ thông tin tài khoản và mật khẩu');
       return;
     }
 
@@ -53,16 +53,16 @@ export default function LoginScreen() {
 
         <View style={styles.formContainer}>
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Email truy cập</Text>
+            <Text style={styles.label}>Tài khoản truy cập</Text>
             <View style={styles.inputContainer}>
-              <Ionicons name="mail-outline" size={20} color={Colors.text.muted} style={styles.inputIcon} />
+              <Ionicons name="person-outline" size={20} color={Colors.text.muted} style={styles.inputIcon} />
               <TextInput
                 style={styles.input}
-                placeholder="Nhập email của bạn..."
+                placeholder="Email, SĐT hoặc tên đăng nhập..."
                 placeholderTextColor={Colors.text.muted}
                 value={email}
                 onChangeText={setEmail}
-                keyboardType="email-address"
+                keyboardType="default"
                 autoCapitalize="none"
               />
             </View>

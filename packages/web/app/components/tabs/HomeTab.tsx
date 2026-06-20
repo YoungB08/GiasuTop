@@ -2,6 +2,7 @@ import React from "react";
 import MessengerChat from "../MessengerChat";
 import { AlertCustomizer } from "../CustomAlert";
 import { IconBell } from "../icons";
+import { getAvatarUrl } from "../../utils/avatar";
 
 type HomeTabProps = {
   homeSubTab: "feed" | "community";
@@ -18,7 +19,7 @@ type HomeTabProps = {
   user: any;
   chatActivePartner: any;
   setChatActivePartner: (partner: any) => void;
-  openAuth: (tab: "login" | "register", role?: "USER" | "TUTOR") => void;
+  openAuth: (tab: "login" | "register", role?: any) => void;
 };
 
 export default function HomeTab({
@@ -44,21 +45,19 @@ export default function HomeTab({
       <div className="flex bg-white dark:bg-[#111827] rounded-xl p-1 shadow-sm border text-xs">
         <button
           onClick={() => setHomeSubTab("feed")}
-          className={`flex-1 py-2 rounded-lg font-semibold text-center cursor-pointer transition ${
-            homeSubTab === "feed"
-              ? "bg-[#13519c] text-white"
-              : "text-slate-500 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800"
-          }`}
+          className={`flex-1 py-2 rounded-lg font-semibold text-center cursor-pointer transition ${homeSubTab === "feed"
+            ? "bg-[#13519c] text-white"
+            : "text-slate-500 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800"
+            }`}
         >
           <i className="fa-solid fa-list-check mr-2"></i>Trang chủ
         </button>
         <button
           onClick={() => setHomeSubTab("community")}
-          className={`flex-1 py-2 rounded-lg font-semibold text-center cursor-pointer transition ${
-            homeSubTab === "community"
-              ? "bg-[#13519c] text-white"
-              : "text-slate-500 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800"
-          }`}
+          className={`flex-1 py-2 rounded-lg font-semibold text-center cursor-pointer transition ${homeSubTab === "community"
+            ? "bg-[#13519c] text-white"
+            : "text-slate-500 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800"
+            }`}
         >
           <i className="fa-solid fa-users mr-2"></i>Cộng đồng
         </button>
@@ -90,11 +89,8 @@ export default function HomeTab({
           <div className="bg-gradient-to-r from-indigo-50 to-blue-50 dark:from-slate-900/60 dark:to-indigo-950/20 border border-indigo-100 dark:border-slate-800 rounded-2xl p-4 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
             <div className="space-y-1 text-left">
               <h4 className="text-xs font-bold text-indigo-950 dark:text-white flex items-center gap-1.5">
-                🔔 Nhận cảnh báo bảo mật & Đề thi mới
+                🔔 Nhận đề thi mới và thông báo từ GiaSuTop
               </h4>
-              <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium leading-relaxed max-w-md">
-                Kích hoạt thông báo để cập nhật tin tức lừa đảo trực tuyến từ <strong>KNTech Anti-Scam</strong> và đề thi AI mới từ <strong>ExamGen</strong> ngay cả khi không mở ứng dụng.
-              </p>
             </div>
             <div className="flex gap-2 w-full md:w-auto shrink-0 justify-end">
               <button
@@ -102,7 +98,7 @@ export default function HomeTab({
                 onClick={handleRegisterNotification}
                 className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[10px] px-3.5 py-2 rounded-xl shadow-md transition active:scale-95 cursor-pointer"
               >
-                Đăng ký Push
+                Nhận
               </button>
               <button
                 type="button"
@@ -136,9 +132,9 @@ export default function HomeTab({
                 >
                   <div className="flex items-center gap-2.5">
                     <img
-                      src={`https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(t.email)}`}
+                      src={getAvatarUrl(t)}
                       alt={t.full_name}
-                      className="h-9 w-9 rounded-full border bg-slate-50"
+                      className="h-9 w-9 rounded-full border bg-slate-50 object-cover"
                     />
                     <div className="min-w-0 flex-1">
                       <h4 className="text-xs font-semibold text-slate-950 dark:text-white truncate">{t.full_name}</h4>

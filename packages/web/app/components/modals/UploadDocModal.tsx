@@ -1,10 +1,12 @@
 import React from "react";
+import KntechUpload from "../KntechUpload";
 
 type UploadDocModalProps = {
   uploadModalOpen: boolean;
   setUploadModalOpen: (open: boolean) => void;
   docUploadForm: { title: string; subjectTag: string; gradeTag: string; typeTag: string };
   setDocUploadForm: (form: any) => void;
+  docFileToUpload: File | null;
   setDocFileToUpload: (file: File | null) => void;
   handleUploadDoc: (e: React.FormEvent) => void;
 };
@@ -14,6 +16,7 @@ export default function UploadDocModal({
   setUploadModalOpen,
   docUploadForm,
   setDocUploadForm,
+  docFileToUpload,
   setDocFileToUpload,
   handleUploadDoc,
 }: UploadDocModalProps) {
@@ -41,13 +44,15 @@ export default function UploadDocModal({
           </div>
 
           <div>
-            <label className="block text-slate-500 mb-1 font-semibold">Tải tệp tài liệu lên (PDF, Word, ...) *</label>
-            <input
-              type="file"
-              required
+            <label className="block text-slate-500 mb-1.5 font-semibold">Tải tệp tài liệu lên (PDF, Word, ...) *</label>
+            <KntechUpload
               accept=".pdf,.doc,.docx,.xls,.xlsx,image/*"
-              onChange={(e) => setDocFileToUpload(e.target.files?.[0] || null)}
-              className="w-full text-xs border border-dashed border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 rounded-xl p-2.5 file:mr-3 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 dark:file:bg-slate-800 dark:file:text-blue-300 cursor-pointer"
+              value={docFileToUpload}
+              required
+              onChange={(files) => setDocFileToUpload(files?.[0] || null)}
+              onClear={() => setDocFileToUpload(null)}
+              mainText="Drag & Drop or Choose file to upload"
+              allowedText="PDF, DOC, DOCX, XLS, XLSX, and Images are Allowed."
             />
           </div>
 
