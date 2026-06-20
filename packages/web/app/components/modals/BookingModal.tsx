@@ -149,25 +149,42 @@ export default function BookingModal({
             ) : (
               <div className="bg-slate-50 dark:bg-slate-900/60 p-3 rounded-xl border space-y-3 text-left">
                 <label className="block text-[10px] font-bold text-slate-500 uppercase">
-                  Thiết lập lịch tuần dài hạn (Tùy biến)
+                  Thiết lập lịch tuần dài hạn
                 </label>
+
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-500 mb-1">1. Giờ học bắt đầu</label>
+                  <select
+                    value={bookingStartHour}
+                    onChange={(e) => setBookingStartHour(e.target.value)}
+                    className="h-10 w-full rounded-lg border px-3 text-xs focus:outline-none focus:border-[#13519c] dark:bg-slate-900 dark:text-white bg-white"
+                  >
+                    <option value="08:00">08:00 Sáng</option>
+                    <option value="09:00">09:00 Sáng</option>
+                    <option value="14:00">14:00 Chiều</option>
+                    <option value="15:00">15:00 Chiều</option>
+                    <option value="19:00">19:00 Tối</option>
+                    <option value="20:00">20:00 Tối</option>
+                  </select>
+                </div>
+
                 <div className="space-y-2">
-                  <div className="text-[10px] font-semibold text-[#13519c]">📅 Tuần 1 (Ví dụ: Thứ 2, 5, 6):</div>
+                  <div className="text-[10px] font-semibold text-[#13519c]">2. Chọn các ngày học trong tuần:</div>
                   <div className="flex flex-wrap gap-1">
                     {["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ nhật"].map((day) => {
-                      const isSel = longTermSchedule.week1.includes(day);
+                      const isSel = (longTermSchedule.week1 || []).includes(day);
                       return (
                         <button
                           type="button"
                           key={day}
                           onClick={() => {
-                            const curr = [...longTermSchedule.week1];
+                            const curr = [...(longTermSchedule.week1 || [])];
                             const idx = curr.indexOf(day);
                             if (idx > -1) curr.splice(idx, 1);
                             else curr.push(day);
-                            setLongTermSchedule({ ...longTermSchedule, week1: curr });
+                            setLongTermSchedule({ week1: curr, week2: curr });
                           }}
-                          className={`px-2 py-1 rounded text-[10px] font-semibold border transition cursor-pointer ${
+                          className={`px-2.5 py-1.5 rounded-lg text-[10px] font-semibold border transition cursor-pointer ${
                             isSel ? "bg-[#13519c] text-white border-[#13519c]" : "bg-white text-slate-600 border-slate-200"
                           }`}
                         >
@@ -177,35 +194,10 @@ export default function BookingModal({
                     })}
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <div className="text-[10px] font-semibold text-rose-600">📅 Tuần 2 (Ví dụ: CN, Thứ 3, 7):</div>
-                  <div className="flex flex-wrap gap-1">
-                    {["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ nhật"].map((day) => {
-                      const isSel = longTermSchedule.week2.includes(day);
-                      return (
-                        <button
-                          type="button"
-                          key={day}
-                          onClick={() => {
-                            const curr = [...longTermSchedule.week2];
-                            const idx = curr.indexOf(day);
-                            if (idx > -1) curr.splice(idx, 1);
-                            else curr.push(day);
-                            setLongTermSchedule({ ...longTermSchedule, week2: curr });
-                          }}
-                          className={`px-2 py-1 rounded text-[10px] font-semibold border transition cursor-pointer ${
-                            isSel ? "bg-rose-600 text-white border-rose-600" : "bg-white text-slate-600 border-slate-200"
-                          }`}
-                        >
-                          {day}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
+
                 <div>
                   <label className="block text-[10px] font-semibold text-slate-500 mb-1">
-                    Số tuần học đăng ký (Khóa học):
+                    3. Số tuần học đăng ký (Khóa học):
                   </label>
                   <input
                     type="number"
@@ -213,7 +205,7 @@ export default function BookingModal({
                     max="24"
                     value={longTermWeeks}
                     onChange={(e) => setLongTermWeeks(Number(e.target.value))}
-                    className="w-full h-8 px-2 border rounded text-xs bg-white text-slate-900 border-slate-200 focus:outline-none"
+                    className="w-full h-10 px-3 border rounded-xl text-xs bg-white text-slate-900 border-slate-200 focus:outline-none"
                   />
                 </div>
               </div>

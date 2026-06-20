@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "build": "tsc",
-    "migrate": "ts-node src/migrations/add_username_column.ts"
+    "migrate": "ts-node src/migrations/add_username_column.ts",
+    "ngrok": "npx ngrok http 5000"
   },
   "keywords": [],
   "author": "",
@@ -24,6 +25,7 @@
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.2.0",
     "mysql2": "^3.22.5",
+    "sepay-pg-node": "^1.0.0",
     "uuid": "^14.0.0",
     "zod": "^4.4.3"
   },

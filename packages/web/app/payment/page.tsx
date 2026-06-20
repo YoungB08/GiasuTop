@@ -12,6 +12,8 @@ type PaymentDetails = {
   amount: number;
   description: string;
   qrUrl: string;
+  checkoutUrl?: string;
+  checkoutFormfields?: Record<string, string>;
 };
 
 function formatVND(value: number | string) {
@@ -33,7 +35,9 @@ function formatDateTime(isoStr: string) {
 function PaymentContent() {
   const searchParams = useSearchParams();
   const appointmentId = searchParams.get("appointmentId");
+  const topupId = searchParams.get("topupId");
   const tokenParam = searchParams.get("token");
+  const statusParam = searchParams.get("status");
 
   const [token, setToken] = useState<string | null>(null);
   const [paymentDetails, setPaymentDetails] = useState<PaymentDetails | null>(null);
@@ -53,6 +57,20 @@ function PaymentContent() {
     setToken(t);
   }, [tokenParam]);
 
+  // Check redirected status from SePay
+  useEffect(() => {
+    if (statusParam === "success") {
+      setPaymentComplete(true);
+      setLoading(false);
+    } else if (statusParam === "cancelled") {
+      setError("Bạn đã hủy thanh toán trên cổng SePay. Vui lòng quay lại lớp học và thử lại.");
+      setLoading(false);
+    } else if (statusParam === "error") {
+      setError("Giao dịch thanh toán qua cổng SePay thất bại hoặc bị lỗi.");
+      setLoading(false);
+    }
+  }, [statusParam]);
+
   // Countdown timer
   useEffect(() => {
     if (paymentComplete || loading) return;
@@ -70,25 +88,30 @@ function PaymentContent() {
 
   // Generate QR
   useEffect(() => {
-    if (!token || !appointmentId) return;
+    if (statusParam) return; // Skip generation if we are redirected back with a status
+    if (!token || (!appointmentId && !topupId)) return;
 
     const generate = async () => {
       setLoading(true);
       setError(null);
       try {
+        const body: any = {};
+        if (appointmentId) body.appointmentId = appointmentId;
+        if (topupId) body.topupId = Number(topupId);
+
         const res = await fetch("http://localhost:5000/api/payments/qr", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({ appointmentId }),
+          body: JSON.stringify(body),
         });
         const json = await res.json();
         if (json.success && json.data) {
           setPaymentDetails(json.data);
           setApptInfo(json.data.appointment || null);
-          startPolling(json.data.paymentId);
+          startPolling(json.data.paymentId, !!topupId);
         } else {
           setError(json.message || "Không thể tạo mã QR. Vui lòng thử lại.");
         }
@@ -104,13 +127,13 @@ function PaymentContent() {
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
-  }, [token, appointmentId]);
+  }, [token, appointmentId, topupId]);
 
-  const startPolling = (paymentId: string) => {
+  const startPolling = (paymentId: string, isTopup: boolean = false) => {
     setPolling(true);
     pollRef.current = setInterval(async () => {
       try {
-        const res = await fetch(`http://localhost:5000/api/payments/${paymentId}/status`, {
+        const res = await fetch(`http://localhost:5000/api/payments/${paymentId}/status${isTopup ? "?type=topup" : ""}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         const json = await res.json();
@@ -135,7 +158,10 @@ function PaymentContent() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ paymentId: paymentDetails.paymentId }),
+        body: JSON.stringify({ 
+          paymentId: paymentDetails.paymentId,
+          isTopup: !!topupId,
+        }),
       });
       const json = await res.json();
       if (json.success) {
@@ -209,7 +235,11 @@ function PaymentContent() {
           </div>
           <div className="space-y-2">
             <h1 className="text-2xl font-bold text-white">Thanh toán thành công!</h1>
-            <p className="text-emerald-300/80 text-sm">Học phí đã được ghi nhận. Lớp học của bạn đã được xác nhận.</p>
+            <p className="text-emerald-300/80 text-sm">
+              {topupId 
+                ? "Số dư ví nội bộ của bác đã được cập nhật thành công." 
+                : "Học phí đã được ghi nhận. Lớp học của bạn đã được xác nhận."}
+            </p>
           </div>
           {paymentDetails && (
             <div className="bg-white/5 backdrop-blur border border-white/10 rounded-xl p-4 text-left text-sm space-y-2">
@@ -377,6 +407,24 @@ function PaymentContent() {
                 </button>
               </div>
             </div>
+
+            {/* SePay Checkout Redirect Button */}
+            {paymentDetails?.checkoutUrl && paymentDetails?.checkoutFormfields && (
+              <form action={paymentDetails.checkoutUrl} method="POST" className="mt-4">
+                {Object.entries(paymentDetails.checkoutFormfields).map(([name, value]) => (
+                  <input key={name} type="hidden" name={name} value={value as string} />
+                ))}
+                <button
+                  type="submit"
+                  className="w-full py-3 bg-gradient-to-r from-[#13519c] to-[#1e7fcb] hover:from-blue-700 hover:to-blue-600 text-white rounded-xl text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1.5 shadow-md transform hover:-translate-y-0.5 active:translate-y-0"
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  </svg>
+                  Mở Cổng Thanh Toán SePay (QR / Napas)
+                </button>
+              </form>
+            )}
           </div>
 
           {/* Appointment Info */}
@@ -399,6 +447,23 @@ function PaymentContent() {
                 <div className="flex items-center gap-2 text-sm">
                   <span className="text-white/40">💰</span>
                   <span className="text-white/80">Học phí: <span className="text-rose-400 font-bold">{formatVND(apptInfo.price_paid)}</span></span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Topup Info */}
+          {topupId && (
+            <div className="bg-white/5 backdrop-blur border border-white/8 rounded-xl p-4 space-y-2 text-left">
+              <p className="text-white/40 text-[10px] uppercase tracking-widest font-semibold">Thông tin nạp tiền</p>
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-white/40">👛</span>
+                <span className="text-white/80">Hình thức: <span className="text-white font-semibold">Nạp tiền ví nội bộ GiasuTop</span></span>
+              </div>
+              {paymentDetails && (
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="text-white/40">💵</span>
+                  <span className="text-white/80">Số tiền nạp: <span className="text-emerald-400 font-bold">{formatVND(paymentDetails.amount)}</span></span>
                 </div>
               )}
             </div>

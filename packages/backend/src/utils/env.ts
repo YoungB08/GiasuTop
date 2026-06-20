@@ -17,6 +17,9 @@ const EnvSchema = z.object({
   SEPAY_BANK_CODE: z.string().optional(),
   SEPAY_ACCOUNT_NUMBER: z.string().optional(),
   SEPAY_ACCOUNT_NAME: z.string().optional(),
+  SEPAY_MERCHANT_ID: z.string().optional(),
+  SEPAY_SECRET_KEY: z.string().optional(),
+  SEPAY_ENV: z.enum(["sandbox", "production"]).default("sandbox"),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

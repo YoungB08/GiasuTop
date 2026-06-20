@@ -76,20 +76,45 @@ export default function TutorProfileModal({
           <div className="space-y-4">
             <form onSubmit={handleUpdateTutorProfile} className="space-y-4 text-xs text-left">
               <div>
-                <label className="block text-slate-500 mb-1 font-semibold">Trình độ / Năm học *</label>
-                <select
-                  value={tutorProfileForm.yearOfStudy}
-                  onChange={(e) => setTutorProfileForm({ ...tutorProfileForm, yearOfStudy: e.target.value })}
-                  className="w-full h-10 border rounded-xl px-2 bg-slate-50 text-slate-900 dark:text-white dark:bg-slate-900 border-slate-250 dark:border-slate-700 cursor-pointer"
-                >
-                  <option value="Sinh viên năm 1">Sinh viên năm 1</option>
-                  <option value="Sinh viên năm 2">Sinh viên năm 2</option>
-                  <option value="Sinh viên năm 3">Sinh viên năm 3</option>
-                  <option value="Sinh viên năm 4">Sinh viên năm 4</option>
-                  <option value="Đã tốt nghiệp cử nhân">Đã tốt nghiệp cử nhân</option>
-                  <option value="Thạc sĩ / Cao học">Thạc sĩ / Cao học</option>
-                  <option value="Giảng viên / Giáo viên">Giảng viên / Giáo viên</option>
-                </select>
+                <label className="block text-slate-500 mb-1 font-semibold">Trường đào tạo *</label>
+                <input
+                  type="text"
+                  required
+                  value={tutorProfileForm.school}
+                  onChange={(e) => setTutorProfileForm({ ...tutorProfileForm, school: e.target.value })}
+                  placeholder="Ví dụ: Đại học Bách Khoa Hà Nội"
+                  className="w-full h-10 px-3 border rounded-xl bg-slate-50 focus:bg-white focus:outline-none text-slate-900 dark:text-white dark:bg-slate-900 border-slate-250 dark:border-slate-700"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-500 mb-1 font-semibold">Chuyên ngành *</label>
+                  <input
+                    type="text"
+                    required
+                    value={tutorProfileForm.major}
+                    onChange={(e) => setTutorProfileForm({ ...tutorProfileForm, major: e.target.value })}
+                    placeholder="Ví dụ: Sư phạm Toán"
+                    className="w-full h-10 px-3 border rounded-xl bg-slate-50 focus:bg-white focus:outline-none text-slate-900 dark:text-white dark:bg-slate-900 border-slate-250 dark:border-slate-700"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-500 mb-1 font-semibold">Trình độ / Năm học *</label>
+                  <select
+                    value={tutorProfileForm.yearOfStudy}
+                    onChange={(e) => setTutorProfileForm({ ...tutorProfileForm, yearOfStudy: e.target.value })}
+                    className="w-full h-10 border rounded-xl px-2 bg-slate-50 text-slate-900 dark:text-white dark:bg-slate-900 border-slate-250 dark:border-slate-700 cursor-pointer"
+                  >
+                    <option value="Sinh viên năm 1">Sinh viên năm 1</option>
+                    <option value="Sinh viên năm 2">Sinh viên năm 2</option>
+                    <option value="Sinh viên năm 3">Sinh viên năm 3</option>
+                    <option value="Sinh viên năm 4">Sinh viên năm 4</option>
+                    <option value="Đã tốt nghiệp cử nhân">Đã tốt nghiệp cử nhân</option>
+                    <option value="Thạc sĩ / Cao học">Thạc sĩ / Cao học</option>
+                    <option value="Giảng viên / Giáo viên">Giảng viên / Giáo viên</option>
+                  </select>
+                </div>
               </div>
 
               <div>
@@ -101,6 +126,50 @@ export default function TutorProfileModal({
                   onChange={(e) => setTutorProfileForm({ ...tutorProfileForm, hourlyRate: e.target.value })}
                   placeholder="Ví dụ: 150000"
                   className="w-full h-10 px-3 border rounded-xl bg-slate-50 focus:bg-white focus:outline-none text-slate-900 dark:text-white dark:bg-slate-900 border-slate-250 dark:border-slate-700"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-500 mb-1 font-semibold">Môn học đăng ký giảng dạy (chọn ít nhất 1 môn) *</label>
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {["Toán", "Lý", "Hóa", "Văn", "Tiếng Anh", "Sinh học"].map((sub) => {
+                    const isChecked = tutorProfileForm.subjectsToTeach.includes(sub);
+                    return (
+                      <button
+                        key={sub}
+                        type="button"
+                        onClick={() => {
+                          const current = [...(tutorProfileForm.subjectsToTeach || [])];
+                          const index = current.indexOf(sub);
+                          if (index > -1) {
+                            current.splice(index, 1);
+                          } else {
+                            current.push(sub);
+                          }
+                          setTutorProfileForm({ ...tutorProfileForm, subjectsToTeach: current });
+                        }}
+                        className={`px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all cursor-pointer ${
+                          isChecked
+                            ? "bg-[#13519c] text-white border-[#13519c]"
+                            : "bg-white text-slate-655 border-slate-200 hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700"
+                        }`}
+                      >
+                        {sub}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-500 mb-1 font-semibold">Giới thiệu bản thân & Kinh nghiệm dạy học *</label>
+                <textarea
+                  required
+                  rows={4}
+                  value={tutorProfileForm.bio}
+                  onChange={(e) => setTutorProfileForm({ ...tutorProfileForm, bio: e.target.value })}
+                  placeholder="Bác vui lòng giới thiệu chi tiết về phương pháp giảng dạy..."
+                  className="w-full p-3 border rounded-xl bg-slate-50 focus:bg-white focus:outline-none text-slate-900 dark:text-white dark:bg-slate-900 border-slate-250 dark:border-slate-700"
                 />
               </div>
 
@@ -119,9 +188,36 @@ export default function TutorProfileModal({
                 />
               </div>
 
+              <div>
+                <label className="block text-slate-500 mb-1.5 font-semibold">Tùy chỉnh màu sắc/gradient thẻ Gia sư *</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { name: "Xanh Dương (KNTech)", class: "bg-gradient-to-r from-blue-600 via-indigo-600 to-[#13519c]" },
+                    { name: "Xanh Lá (Teal)", class: "bg-gradient-to-r from-emerald-500 via-teal-600 to-teal-800" },
+                    { name: "Sunset Hoàng Hôn", class: "bg-gradient-to-r from-rose-500 via-orange-600 to-red-700" },
+                    { name: "Tím Midnight", class: "bg-gradient-to-r from-purple-600 via-violet-750 to-slate-900" },
+                  ].map((g) => (
+                    <button
+                      key={g.class}
+                      type="button"
+                      onClick={() => setTutorProfileForm({ ...tutorProfileForm, cardGradient: g.class })}
+                      className={`p-2 rounded-xl text-left border font-semibold text-white h-12 flex flex-col justify-between cursor-pointer transition ${g.class} ${
+                        tutorProfileForm.cardGradient === g.class
+                          ? "ring-2 ring-blue-500 ring-offset-1 dark:ring-offset-slate-950"
+                          : "opacity-80 hover:opacity-100 border-slate-200 dark:border-slate-800"
+                      }`}
+                    >
+                      <span className="text-[9px] truncate">{g.name}</span>
+                      <span className="text-[7px] tracking-widest uppercase bg-black/20 px-1 rounded self-end">CHỌN</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <button
                 type="submit"
-                className="w-full h-11 mt-2 bg-gradient-to-r from-blue-600 to-[#13519c] text-white text-xs font-bold rounded-xl shadow-md transition hover:opacity-90 cursor-pointer"
+                disabled={!tutorProfileForm.subjectsToTeach || tutorProfileForm.subjectsToTeach.length === 0}
+                className="w-full h-11 mt-2 bg-gradient-to-r from-blue-600 to-[#13519c] text-white text-xs font-bold rounded-xl shadow-md transition hover:opacity-90 disabled:opacity-50 cursor-pointer"
               >
                 Cập Nhật Hồ Sơ Dạy Học (Cần Admin Duyệt Lại)
               </button>

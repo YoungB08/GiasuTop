@@ -49,7 +49,7 @@ router.get("/status", requireAuth, async (req: AuthedRequest, res: Response): Pr
   }
 });
 
-// POST /api/wallet/topup (Simulate topping up money)
+// POST /api/wallet/topup (Create a pending topup request)
 router.post("/topup", requireAuth, async (req: AuthedRequest, res: Response): Promise<any> => {
   if (!req.user) return res.status(401).json({ success: false, message: "Unauthorized" });
 
@@ -59,47 +59,23 @@ router.post("/topup", requireAuth, async (req: AuthedRequest, res: Response): Pr
     return res.status(400).json({ success: false, message: "Số tiền nạp không hợp lệ" });
   }
 
-  const connection = await pool.getConnection();
   try {
-    await connection.beginTransaction();
-
-    // Check if wallet exists, create if not
-    const [accounts]: any = await connection.query(
-      "SELECT available_balance FROM wallet_accounts WHERE user_id = ? FOR UPDATE",
-      [req.user.id]
-    );
-    if (accounts.length === 0) {
-      await connection.query(
-        "INSERT INTO wallet_accounts (user_id, available_balance, holding_balance) VALUES (?, 0.00, 0.00)",
-        [req.user.id]
-      );
-    }
-
-    // Add balance
-    await connection.query(
-      "UPDATE wallet_accounts SET available_balance = available_balance + ? WHERE user_id = ?",
-      [numAmount, req.user.id]
-    );
-
-    // Create ledger entry
-    await connection.query(
-      "INSERT INTO wallet_ledger (user_id, entry_type, amount, ref_type, ref_id) VALUES (?, 'TOPUP', ?, 'SIMULATE', ?)",
-      [req.user.id, numAmount, `TOPUP-${Date.now()}`]
-    );
-
-    // Create wallet_topup log
-    await connection.query(
-      "INSERT INTO wallet_topups (user_id, amount, status, provider, paid_at) VALUES (?, ?, 'PAID', 'SEPAY', NOW())",
+    // Create wallet_topup log in PENDING status
+    const [result]: any = await pool.query(
+      "INSERT INTO wallet_topups (user_id, amount, status, provider) VALUES (?, ?, 'PENDING', 'SEPAY')",
       [req.user.id, numAmount]
     );
+    const topupId = result.insertId;
 
-    await connection.commit();
-    return res.json({ success: true, message: `Nạp thành công ${numAmount.toLocaleString()}đ vào ví!` });
+    return res.json({
+      success: true,
+      data: {
+        topupId,
+        amount: numAmount,
+      },
+    });
   } catch (error: any) {
-    await connection.rollback();
     return res.status(500).json({ success: false, message: error.message });
-  } finally {
-    connection.release();
   }
 });
 

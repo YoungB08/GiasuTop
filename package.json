@@ -12,6 +12,7 @@
   "scripts": {
     "backend": "npm run --prefix packages/backend dev",
     "web": "npm run --prefix packages/web dev",
-    "mobile": "npm run --prefix packages/mobile start"
+    "mobile": "npm run --prefix packages/mobile start",
+    "ngrok": "npx ngrok http 5000"
   }
 }

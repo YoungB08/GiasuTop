@@ -61,10 +61,10 @@ export async function upsertMyTutorProfile(req: AuthedRequest, res: Response): P
   if (!requireTutor(req, res)) return;
 
   const [profileRows]: any = await pool.query(
-    "SELECT is_verified, year_of_study, hourly_rate, proposed_commission_percent, commission_percent FROM tutor_profiles WHERE user_id = ?",
+    "SELECT is_verified, year_of_study, hourly_rate, proposed_commission_percent, commission_percent, bio, school, major, subjects_to_teach FROM tutor_profiles WHERE user_id = ?",
     [req.user!.id]
   );
-
+ 
   const profile = profileRows[0];
   const currentStatus = profile?.is_verified;
   if (!currentStatus || currentStatus === "REJECTED") {
@@ -73,13 +73,13 @@ export async function upsertMyTutorProfile(req: AuthedRequest, res: Response): P
       message: "Hồ sơ của bạn chưa được gửi xác minh. Vui lòng gửi tài liệu CCCD trước.",
     });
   }
-
+ 
   const input = UpsertTutorProfileSchema.parse(req.body);
   const subjectsCsv = input.subjectsToTeach
     ? input.subjectsToTeach.map((s: string) => s.trim()).filter(Boolean).join(",")
     : null;
   const proposedPercent = input.proposedPercent ?? null;
-
+ 
   // Only reset to PENDING if there are changes to fields from their current values
   let shouldResetStatus = false;
   if (currentStatus === "APPROVED") {
@@ -88,16 +88,20 @@ export async function upsertMyTutorProfile(req: AuthedRequest, res: Response): P
     const isCommissionDiff = proposedPercent !== null && 
       Number(proposedPercent) !== Number(profile.commission_percent) && 
       Number(proposedPercent) !== Number(profile.proposed_commission_percent);
+    const isBioDiff = input.bio !== undefined && input.bio !== null && input.bio !== profile.bio;
+    const isSchoolDiff = input.school !== undefined && input.school !== null && input.school !== profile.school;
+    const isMajorDiff = input.major !== undefined && input.major !== null && input.major !== profile.major;
+    const isSubjectsDiff = subjectsCsv !== null && subjectsCsv !== profile.subjects_to_teach;
     
-    if (isYearDiff || isRateDiff || isCommissionDiff) {
+    if (isYearDiff || isRateDiff || isCommissionDiff || isBioDiff || isSchoolDiff || isMajorDiff || isSubjectsDiff) {
       shouldResetStatus = true;
     }
   } else {
     shouldResetStatus = true;
   }
-
+ 
   const newStatus = shouldResetStatus ? "PENDING" : currentStatus;
-
+ 
   await pool.query(
     "UPDATE tutor_profiles SET " +
       "bio = COALESCE(?, bio), " +
@@ -123,7 +127,7 @@ export async function upsertMyTutorProfile(req: AuthedRequest, res: Response): P
       req.user!.id,
     ]
   );
-
+ 
   return res.json({ success: true, message: shouldResetStatus ? "Cập nhật hồ sơ dạy học thành công. Vui lòng chờ admin phê duyệt lại để hiển thị." : "Cập nhật hồ sơ thành công." });
 }
 

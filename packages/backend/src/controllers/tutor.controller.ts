@@ -20,13 +20,6 @@ export const getTutors = async (req: Request, res: Response) => {
       FROM tutor_profiles tp
       JOIN users u ON tp.user_id = u.id
       WHERE tp.is_verified = 'APPROVED'
-        AND tp.bio IS NOT NULL AND tp.bio != ''
-        AND tp.school IS NOT NULL AND tp.school != 'Chưa cập nhật' AND tp.school != ''
-        AND tp.major IS NOT NULL AND tp.major != 'Chưa cập nhật' AND tp.major != ''
-        AND tp.hourly_rate IS NOT NULL AND tp.hourly_rate > 0
-        AND tp.subjects_to_teach IS NOT NULL AND tp.subjects_to_teach != ''
-        AND u.avatar_url IS NOT NULL AND u.avatar_url != ''
-        AND u.phone IS NOT NULL AND u.phone != ''
     `);
 
     
@@ -37,7 +30,7 @@ export const getTutors = async (req: Request, res: Response) => {
       );
       return {
         ...tutor,
-        subjects_to_teach: tutor.subjects_to_teach.split(','),
+        subjects_to_teach: tutor.subjects_to_teach ? tutor.subjects_to_teach.split(',') : [],
         card_gradient: tutor.card_gradient || 'bg-gradient-to-r from-blue-600 via-indigo-600 to-[#13519c]',
         documents: docs
       };

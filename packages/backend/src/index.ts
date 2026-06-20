@@ -25,6 +25,7 @@ import { requestLogger } from './middlewares/log.middleware';
 dotenv.config();
 
 const app = express();
+app.set('trust proxy', true);
 const env = getEnv();
 const PORT = env.PORT || 5000;
 
@@ -146,7 +147,15 @@ async function runStartupMigration() {
       console.log("Adding age column to users...");
       await pool.query("ALTER TABLE users ADD COLUMN age INT NULL");
     }
-    console.log("Users table migrations checked/completed successfully.");
+    
+    // Alter sepay_transactions.sepay_id to VARCHAR(100) if it is still INT to allow UUID-like strings
+    const [sepayIdCol]: any = await pool.query("SHOW COLUMNS FROM sepay_transactions LIKE 'sepay_id'");
+    if (sepayIdCol.length > 0 && sepayIdCol[0].Type.toLowerCase().includes("int")) {
+      console.log("Altering sepay_transactions.sepay_id to VARCHAR(100)...");
+      await pool.query("ALTER TABLE sepay_transactions MODIFY COLUMN sepay_id VARCHAR(100) NOT NULL");
+    }
+    
+    console.log("Users & SePay table migrations checked/completed successfully.");
   } catch (err) {
     console.error("Failed to run startup migration:", err);
   }

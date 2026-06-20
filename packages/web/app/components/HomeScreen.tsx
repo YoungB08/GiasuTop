@@ -326,8 +326,8 @@ export default function HomeScreen() {
   // Long term scheduling states
   const [tutorBookingType, setTutorBookingType] = useState<"SINGLE" | "LONG_TERM">("SINGLE");
   const [longTermSchedule, setLongTermSchedule] = useState<{ week1: string[]; week2: string[] }>({
-    week1: ["Thứ 2", "Thứ 5", "Thứ 6"],
-    week2: ["Thứ 3", "Thứ 7", "Chủ nhật"],
+    week1: ["Thứ 2", "Thứ 4", "Thứ 6"],
+    week2: ["Thứ 2", "Thứ 4", "Thứ 6"],
   });
   const [longTermWeeks, setLongTermWeeks] = useState<number>(4);
 
@@ -938,10 +938,10 @@ export default function HomeScreen() {
         body: JSON.stringify({ amount: topupAmountInput })
       });
       const json = await res.json();
-      if (json.success) {
-        showKntechAlert("success", "Nạp tiền thành công", json.message);
+      if (json.success && json.data?.topupId) {
         setTopupAmountInput("");
-        fetchUserData();
+        const t = token || localStorage.getItem("token") || "";
+        window.open(`/payment?topupId=${json.data.topupId}&token=${encodeURIComponent(t)}`, "_blank");
       } else {
         showKntechAlert("error", "Lỗi nạp tiền", formatBackendError(json));
       }
@@ -991,6 +991,14 @@ export default function HomeScreen() {
   useEffect(() => {
     if (token) {
       fetchUserData();
+      
+      const onFocus = () => {
+        fetchUserData();
+      };
+      window.addEventListener("focus", onFocus);
+      return () => {
+        window.removeEventListener("focus", onFocus);
+      };
     } else {
       setAppointments([]);
       setWallet({ available_balance: 0, holding_balance: 0 });
@@ -1214,7 +1222,8 @@ export default function HomeScreen() {
             const targetDayIdx = dayMap[dayName] ?? 1;
             const sessionDate = new Date();
             sessionDate.setDate(now.getDate() + currentDayOffset + (week * 7) + ((targetDayIdx - now.getDay() + 7) % 7));
-            sessionDate.setHours(19, 0, 0, 0); // Default 19:00
+            const [startH, startM] = bookingStartHour.split(":").map(Number);
+            sessionDate.setHours(startH, startM, 0, 0);
 
             const endSessionDate = new Date(sessionDate.getTime() + durationHours * 60 * 60 * 1000);
             sessions.push({
@@ -1925,8 +1934,13 @@ export default function HomeScreen() {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
+          school: tutorProfileForm.school,
+          major: tutorProfileForm.major,
           yearOfStudy: tutorProfileForm.yearOfStudy,
           hourlyRate: Number(tutorProfileForm.hourlyRate),
+          subjectsToTeach: tutorProfileForm.subjectsToTeach,
+          bio: tutorProfileForm.bio,
+          cardGradient: tutorProfileForm.cardGradient,
           proposedPercent: Number(newCommissionRate),
         }),
       });
