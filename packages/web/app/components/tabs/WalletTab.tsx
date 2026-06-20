@@ -31,6 +31,20 @@ export default function WalletTab({
   handleWebTopup,
   handleWebWithdraw,
 }: WalletTabProps) {
+  const entryTypeLabel = (entryType: string) => {
+    const labels: Record<string, string> = {
+      TOPUP: "Nạp tiền vào ví",
+      BOOKING_PAYMENT: "Thanh toán học phí",
+      HOLD: "Giam tiền lớp học",
+      RELEASE: "Trả tiền vào ví khả dụng",
+      REFUND: "Hoàn tiền",
+      WITHDRAW_REQUEST: "Yêu cầu rút tiền",
+      WITHDRAW_APPROVE: "Rút tiền đã duyệt",
+      WITHDRAW_REJECT: "Rút tiền bị từ chối",
+    };
+    return labels[entryType] || entryType;
+  };
+
   return (
     <div className="space-y-6">
       <h2 className="text-base font-semibold text-slate-900 dark:text-white">Ví Tiền Nội Bộ GiasuTop</h2>
@@ -149,7 +163,7 @@ export default function WalletTab({
                 walletLedger.map((l) => (
                   <tr key={l.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/40 transition">
                     <td className="px-4 py-2.5 text-slate-400">{new Date(l.created_at).toLocaleString("vi-VN")}</td>
-                    <td className="px-4 py-2.5 font-sans font-semibold">{l.entry_type}</td>
+                    <td className="px-4 py-2.5 font-sans font-semibold">{l.entry_type_label || entryTypeLabel(l.entry_type)}</td>
                     <td className="px-4 py-2.5 text-slate-550">{l.ref_id}</td>
                     <td className={`px-4 py-2.5 text-right font-bold ${l.amount > 0 ? "text-emerald-600" : "text-rose-600"}`}>
                       {l.amount > 0 ? "+" : ""}

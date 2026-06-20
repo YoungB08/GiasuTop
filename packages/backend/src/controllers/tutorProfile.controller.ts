@@ -4,6 +4,9 @@ import { z } from "zod";
 import pool from "../config/db";
 import type { AuthedRequest } from "../middlewares/auth";
 import { assertUploadedFilesAreSafe, getTutorPrivateUploadPath } from "../utils/upload";
+import { decodeMultipartString } from "./admin.controller";
+import { notifyAdmins } from "../services/notification.service";
+import { notifyZaloAdmins, zaloFormat } from "../services/zaloAdmin.service";
 
 
 
@@ -127,6 +130,27 @@ export async function upsertMyTutorProfile(req: AuthedRequest, res: Response): P
       req.user!.id,
     ]
   );
+
+  if (shouldResetStatus) {
+    await notifyAdmins({
+      actorId: req.user!.id,
+      type: "SYSTEM",
+      title: "Gia sư đã cập nhật hồ sơ",
+      body: `${req.user!.email} vừa cập nhật hồ sơ gia sư và đang chờ duyệt lại.`,
+      linkUrl: "/?tab=admin&tutors=1",
+      entityType: "TUTOR_PROFILE",
+      entityId: req.user!.id,
+    });
+    await notifyZaloAdmins("TUTOR_PENDING", [
+      ["👤 Gia sư", req.user!.email],
+      ["📌 Loại", "Cập nhật hồ sơ cần duyệt lại"],
+      ["🏫 Trường", input.school ?? profile?.school],
+      ["📚 Môn", subjectsCsv ?? profile?.subjects_to_teach],
+      ["💰 Học phí", input.hourlyRate ? zaloFormat.money(input.hourlyRate) : null],
+      ["💎 Chiết khấu đề xuất", proposedPercent !== null ? `${proposedPercent}%` : null],
+      ["🆔 User ID", req.user!.id],
+    ]);
+  }
  
   return res.json({ success: true, message: shouldResetStatus ? "Cập nhật hồ sơ dạy học thành công. Vui lòng chờ admin phê duyệt lại để hiển thị." : "Cập nhật hồ sơ thành công." });
 }
@@ -215,7 +239,7 @@ export async function uploadMyTutorDocuments(req: AuthedRequest, res: Response):
           docType,
           `/api/tutors/me/documents/file/${encodeURIComponent(file.filename)}`,
           file.filename,
-          path.basename(file.originalname),
+          path.basename(Buffer.from(file.originalname, "latin1").toString("utf8")),
           file.mimetype,
           file.size,
         ]);
@@ -250,7 +274,7 @@ export async function uploadMyTutorDocuments(req: AuthedRequest, res: Response):
           docType,
           `/api/tutors/me/documents/file/${encodeURIComponent(file.filename)}`,
           file.filename,
-          path.basename(file.originalname),
+          path.basename(Buffer.from(file.originalname, "latin1").toString("utf8")),
           file.mimetype,
           file.size,
         ]);
@@ -268,10 +292,10 @@ export async function uploadMyTutorDocuments(req: AuthedRequest, res: Response):
         inserts.flat()
       );
 
-      const bio = req.body.bio ?? "";
-      const school = req.body.school ?? "";
-      const major = req.body.major ?? "";
-      const yearOfStudy = req.body.yearOfStudy ?? "Sinh viên năm 1";
+      const bio = decodeMultipartString(req.body.bio ?? "");
+      const school = decodeMultipartString(req.body.school ?? "");
+      const major = decodeMultipartString(req.body.major ?? "");
+      const yearOfStudy = decodeMultipartString(req.body.yearOfStudy ?? "Sinh viên năm 1");
       const hourlyRate = req.body.hourlyRate ? Number(req.body.hourlyRate) : 150000;
       let subjectsCSV = "";
       if (req.body.subjectsToTeach) {
@@ -319,6 +343,25 @@ export async function uploadMyTutorDocuments(req: AuthedRequest, res: Response):
     "SELECT id, doc_type, original_name, mime_type, file_size_bytes, status, created_at FROM tutor_documents WHERE tutor_user_id = ? ORDER BY created_at DESC",
     [req.user!.id]
   );
+
+  await notifyAdmins({
+    actorId: req.user!.id,
+    type: "SYSTEM",
+    title: currentStatus === "APPROVED" ? "Gia sư đã gửi chứng chỉ mới" : "Có hồ sơ gia sư mới chờ duyệt",
+    body: currentStatus === "APPROVED"
+      ? `${req.user!.email} vừa tải lên chứng chỉ mới.`
+      : `${req.user!.email} vừa gửi hồ sơ xác minh gia sư.`,
+    linkUrl: "/?tab=admin&tutors=1",
+    entityType: "TUTOR_PROFILE",
+    entityId: req.user!.id,
+  });
+  await notifyZaloAdmins("TUTOR_PENDING", [
+    ["👤 Gia sư", req.user!.email],
+    ["📌 Loại", currentStatus === "APPROVED" ? "Chứng chỉ mới chờ duyệt" : "Hồ sơ xác minh mới"],
+    ["📎 Số tài liệu", uploadedDocs.length],
+    ["🆔 User ID", req.user!.id],
+    ["🧭 Admin", "Vào tab Admin > Duyệt gia sư"],
+  ]);
 
   return res.status(201).json({
     success: true,
@@ -372,6 +415,22 @@ export async function proposeCommission(req: AuthedRequest, res: Response): Prom
       "UPDATE tutor_profiles SET proposed_commission_percent = ? WHERE user_id = ?",
       [proposedPercent, req.user!.id]
     );
+    await notifyAdmins({
+      actorId: req.user!.id,
+      type: "SYSTEM",
+      title: "Gia sư đề xuất chiết khấu",
+      body: `${req.user!.email} đề xuất điều chỉnh chiết khấu thành ${proposedPercent}%.`,
+      linkUrl: "/?tab=admin&tutors=1",
+      entityType: "TUTOR_PROFILE",
+      entityId: req.user!.id,
+      metadata: { proposedPercent },
+    });
+    await notifyZaloAdmins("COMMISSION_PENDING", [
+      ["👤 Gia sư", req.user!.email],
+      ["💎 Chiết khấu đề xuất", `${proposedPercent}%`],
+      ["🆔 User ID", req.user!.id],
+      ["🧭 Admin", "Vào Admin duyệt/từ chối đề xuất"],
+    ]);
     return res.json({
       success: true,
       message: `Đã đề xuất điều chỉnh phần trăm chiết khấu thành ${proposedPercent}%. Vui lòng chờ admin phê duyệt.`

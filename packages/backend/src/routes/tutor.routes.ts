@@ -9,6 +9,7 @@ router.get('/', getTutors);
 router.get('/:tutorId', getTutorById);
 router.post('/book', bookAppointment);
 router.get("/documents/:documentId", requireAuth, getMyTutorDocumentFile);
+router.get("/me/documents/:documentId/file", requireAuth, getMyTutorDocumentFile);
 router.get("/me/documents/file/:filename", requireAuth, getMyTutorDocumentFileByFilename);
 router.get("/:tutorId/reviews", getTutorReviews);
 router.post("/:tutorId/reviews", createTutorReview);

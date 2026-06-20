@@ -83,7 +83,7 @@ export async function assertDocumentFileIsSafe(filePath: string, mimetype: strin
     throw new Error("File có chứa chữ ký thực thi ELF, nguy cơ mã độc cao!");
   }
 
-  // Scan for scripts and external links/URLs
+  // Scan for scripts (but bypass HTTP/HTTPS link checks as namespaces/references are normal in PDFs/Office docs)
   const contentStr = content.toString("utf8").toLowerCase();
   if (
     contentStr.includes("<script") ||
@@ -93,10 +93,6 @@ export async function assertDocumentFileIsSafe(filePath: string, mimetype: strin
   ) {
     throw new Error("File có chứa mã độc script hoặc lệnh thực thi nguy hiểm!");
   }
-
-  if (contentStr.includes("http://") || contentStr.includes("https://")) {
-    throw new Error("File có chứa các đường link liên kết ngoài (URL), nguy cơ lừa đảo hoặc mã độc!");
-  }
 }
 
 export async function assertUploadedFilesAreSafe(files: Express.Multer.File[]) {
@@ -104,7 +100,8 @@ export async function assertUploadedFilesAreSafe(files: Express.Multer.File[]) {
     const ok = await detectAllowedUpload(file.path, file.mimetype);
     if (!ok) {
       await fs.promises.rm(file.path, { force: true });
-      const error = new Error(`Invalid file content: ${file.originalname}`);
+      const decodedName = Buffer.from(file.originalname, "latin1").toString("utf8");
+      const error = new Error(`Invalid file content: ${decodedName}`);
       (error as any).statusCode = 400;
       throw error;
     }

@@ -170,4 +170,43 @@ export function AlertCustomizer({ onTestAlert }: { onTestAlert: (type: AlertType
     };
     reader.readAsDataURL(file);
   };
+
+  return (
+    <div className="rounded-2xl border border-slate-200/70 dark:border-slate-800 bg-white/70 dark:bg-slate-900/60 p-4 text-xs space-y-3">
+      <div className="font-bold text-slate-800 dark:text-slate-200">Test thông báo</div>
+      <div className="grid gap-2 md:grid-cols-2">
+        <input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          className="h-9 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 px-3 focus:outline-none"
+          placeholder="Tiêu đề"
+        />
+        <select
+          value={type}
+          onChange={(e) => setType(e.target.value as AlertType)}
+          className="h-9 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 px-3 focus:outline-none"
+        >
+          <option value="success">Thành công</option>
+          <option value="warning">Cảnh báo</option>
+          <option value="error">Lỗi</option>
+          <option value="info">Thông tin</option>
+        </select>
+      </div>
+      <textarea
+        value={message}
+        onChange={(e) => setMessage(e.target.value)}
+        className="min-h-20 w-full rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 px-3 py-2 focus:outline-none resize-y"
+        placeholder="Nội dung"
+      />
+      <input type="file" accept="image/*" onChange={handleImageChange} className="block w-full text-[11px]" />
+      {errorText && <div className="text-rose-500 font-semibold">{errorText}</div>}
+      <button
+        type="button"
+        onClick={() => onTestAlert(type, title, message, customImage)}
+        className="h-9 rounded-lg bg-[#13519c] px-4 text-white font-bold hover:bg-blue-800"
+      >
+        Hiển thị thử
+      </button>
+    </div>
+  );
 }

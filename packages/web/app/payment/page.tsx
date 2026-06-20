@@ -51,6 +51,15 @@ function PaymentContent() {
   const [copied, setCopied] = useState<string | null>(null);
   const [countdown, setCountdown] = useState(900); // 15 minutes
 
+  const notifyPaymentCompleted = () => {
+    if (!appointmentId || typeof window === "undefined") return;
+    localStorage.setItem(
+      "kntech-payment-completed",
+      JSON.stringify({ appointmentId, at: Date.now() })
+    );
+    window.dispatchEvent(new CustomEvent("kntech-payment-completed", { detail: { appointmentId } }));
+  };
+
   // Resolve token: from URL param or localStorage
   useEffect(() => {
     const t = tokenParam || (typeof window !== "undefined" ? localStorage.getItem("token") : null);
@@ -61,6 +70,7 @@ function PaymentContent() {
   useEffect(() => {
     if (statusParam === "success") {
       setPaymentComplete(true);
+      notifyPaymentCompleted();
       setLoading(false);
     } else if (statusParam === "cancelled") {
       setError("Bạn đã hủy thanh toán trên cổng SePay. Vui lòng quay lại lớp học và thử lại.");
@@ -139,6 +149,7 @@ function PaymentContent() {
         const json = await res.json();
         if (json.success && json.data?.status === "PAID") {
           setPaymentComplete(true);
+          notifyPaymentCompleted();
           setPolling(false);
           if (pollRef.current) clearInterval(pollRef.current);
         }
@@ -166,13 +177,14 @@ function PaymentContent() {
       const json = await res.json();
       if (json.success) {
         setPaymentComplete(true);
+        notifyPaymentCompleted();
         setPolling(false);
         if (pollRef.current) clearInterval(pollRef.current);
       } else {
-        alert(json.message);
+        setError(json.message || "Không thể ghi nhận thanh toán.");
       }
     } catch {
-      alert("Lỗi kết nối máy chủ.");
+      setError("Lỗi kết nối máy chủ.");
     } finally {
       setSimulating(false);
     }
@@ -238,7 +250,7 @@ function PaymentContent() {
             <p className="text-emerald-300/80 text-sm">
               {topupId 
                 ? "Số dư ví nội bộ của bác đã được cập nhật thành công." 
-                : "Học phí đã được ghi nhận. Lớp học của bạn đã được xác nhận."}
+                : "Học phí đã được ghi nhận. Lớp học đã được xác nhận; tiền gia sư sẽ bị giam 3 ngày nếu không có khiếu nại."}
             </p>
           </div>
           {paymentDetails && (

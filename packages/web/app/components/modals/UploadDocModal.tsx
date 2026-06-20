@@ -49,7 +49,13 @@ export default function UploadDocModal({
               accept=".pdf,.doc,.docx,.xls,.xlsx,image/*"
               value={docFileToUpload}
               required
-              onChange={(files) => setDocFileToUpload(files?.[0] || null)}
+              onChange={(files) => {
+                const file = files?.[0] || null;
+                setDocFileToUpload(file);
+                if (file && !docUploadForm.title) {
+                  setDocUploadForm({ ...docUploadForm, title: file.name });
+                }
+              }}
               onClear={() => setDocFileToUpload(null)}
               mainText="Drag & Drop or Choose file to upload"
               allowedText="PDF, DOC, DOCX, XLS, XLSX, and Images are Allowed."

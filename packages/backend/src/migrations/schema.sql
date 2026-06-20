@@ -67,6 +67,11 @@ CREATE TABLE IF NOT EXISTS appointments (
   price_paid DECIMAL(20,2) NOT NULL,
   status ENUM('PENDING','CONFIRMED','CANCELLED','DONE') NOT NULL DEFAULT 'PENDING',
   payment_status ENUM('UNPAID','HOLDING','RELEASED','REFUNDED','FAILED') NOT NULL DEFAULT 'UNPAID',
+  commission_percent_snapshot DECIMAL(5,2) NULL,
+  commission_amount DECIMAL(20,2) NULL,
+  tutor_earning DECIMAL(20,2) NULL,
+  escrow_release_date DATETIME NULL,
+  escrow_released_at DATETIME NULL,
   live_room_code VARCHAR(128) NULL,
   live_room_url TEXT NULL,
   schedule_type ENUM('SINGLE','LONG_TERM') NOT NULL DEFAULT 'SINGLE',
@@ -111,7 +116,7 @@ CREATE TABLE IF NOT EXISTS wallet_ledger (
   ) NOT NULL,
   amount DECIMAL(20,2) NOT NULL,
   ref_type VARCHAR(32) NULL,
-  ref_id VARCHAR(64) NULL,
+  ref_id VARCHAR(255) NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX (user_id),
   INDEX (entry_type)
@@ -211,6 +216,25 @@ CREATE TABLE IF NOT EXISTS system_logs (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS notifications (
+  id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  recipient_id VARCHAR(36) NOT NULL,
+  actor_id VARCHAR(36) NULL,
+  type VARCHAR(60) NOT NULL,
+  title VARCHAR(180) NOT NULL,
+  body TEXT NOT NULL,
+  link_url TEXT NULL,
+  entity_type VARCHAR(60) NULL,
+  entity_id VARCHAR(64) NULL,
+  metadata JSON NULL,
+  is_read TINYINT NOT NULL DEFAULT 0,
+  read_at DATETIME NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX (recipient_id, is_read, created_at),
+  INDEX (type),
+  INDEX (entity_type, entity_id)
+);
+
 CREATE TABLE IF NOT EXISTS subjects (
   id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   name VARCHAR(120) NOT NULL UNIQUE,
@@ -249,6 +273,7 @@ CREATE TABLE IF NOT EXISTS documents (
   uploader_id VARCHAR(36) NOT NULL,
   uploader_name VARCHAR(120) NOT NULL,
   is_approved ENUM('PENDING','APPROVED','REJECTED') NOT NULL DEFAULT 'PENDING',
+  reject_reason TEXT NULL,
   download_count INT NOT NULL DEFAULT 0,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

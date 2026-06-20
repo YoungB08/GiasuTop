@@ -2,6 +2,7 @@ import type { Response } from "express";
 import { z } from "zod";
 import pool from "../config/db";
 import type { AuthedRequest } from "../middlewares/auth";
+import { createNotification } from "../services/notification.service";
 
 const SendDirectMessageSchema = z.object({
   receiverId: z.string().min(1).max(36),
@@ -27,6 +28,20 @@ export async function sendDirectMessage(req: AuthedRequest, res: Response): Prom
       [senderId, input.receiverId, input.message || "", input.fileUrl || null, input.fileName || null, input.fileType || null]
     );
 
+    const [senderRows]: any = await pool.query("SELECT full_name FROM users WHERE id = ? LIMIT 1", [senderId]);
+    const senderName = senderRows[0]?.full_name || "Người dùng";
+    await createNotification({
+      recipientId: input.receiverId,
+      actorId: senderId,
+      type: "MESSAGE",
+      title: `${senderName} đã gửi tin nhắn`,
+      body: input.message?.trim() || (input.fileName ? `Đã gửi tệp: ${input.fileName}` : "Bạn có tin nhắn mới."),
+      linkUrl: "/?tab=messages",
+      entityType: "DIRECT_MESSAGE",
+      entityId: senderId,
+      metadata: { senderId, fileUrl: input.fileUrl ?? null, fileName: input.fileName ?? null },
+    });
+
     return res.json({ success: true, message: "Gửi tin nhắn thành công!" });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
@@ -48,7 +63,6 @@ export async function listDirectMessages(req: AuthedRequest, res: Response): Pro
       [senderId, partnerId, partnerId, senderId]
     );
 
-    // Mark messages as read
     await pool.query(
       "UPDATE direct_messages SET is_read = 1 WHERE sender_id = ? AND receiver_id = ? AND is_read = 0",
       [partnerId, senderId]
@@ -64,7 +78,6 @@ export async function listChatContacts(req: AuthedRequest, res: Response): Promi
   try {
     const userId = req.user!.id;
 
-    // Get all users who have exchanged messages with current user, or have bookings/appointments together
     const [rows]: any = await pool.query(
       `SELECT DISTINCT u.id, u.full_name, u.email, u.avatar_url, u.role
        FROM users u
@@ -77,7 +90,6 @@ export async function listChatContacts(req: AuthedRequest, res: Response): Promi
       [userId, userId, userId, userId, userId]
     );
 
-    // Fetch the last message and unread count for each contact
     for (const contact of rows) {
       const [lastMsgRows]: any = await pool.query(
         `SELECT message, created_at, sender_id
@@ -99,7 +111,6 @@ export async function listChatContacts(req: AuthedRequest, res: Response): Promi
       contact.unread_count = unreadRows[0]?.count || 0;
     }
 
-    // Sort contacts: those with messages first (by latest message date), then by name
     rows.sort((a: any, b: any) => {
       const timeA = a.last_message ? new Date(a.last_message.created_at).getTime() : 0;
       const timeB = b.last_message ? new Date(b.last_message.created_at).getTime() : 0;

@@ -1,8 +1,24 @@
 import { Router, Response } from "express";
 import { requireAuth, AuthedRequest } from "../middlewares/auth";
 import pool from "../config/db";
+import { notifyAdmins } from "../services/notification.service";
+import { notifyZaloAdmins, zaloFormat } from "../services/zaloAdmin.service";
 
 const router = Router();
+
+const walletEntryTypeLabel = (entryType: string) => {
+  const labels: Record<string, string> = {
+    TOPUP: "Nạp tiền vào ví",
+    BOOKING_PAYMENT: "Thanh toán học phí",
+    HOLD: "Giam tiền lớp học",
+    RELEASE: "Trả tiền vào ví khả dụng",
+    REFUND: "Hoàn tiền",
+    WITHDRAW_REQUEST: "Yêu cầu rút tiền",
+    WITHDRAW_APPROVE: "Rút tiền đã duyệt",
+    WITHDRAW_REJECT: "Rút tiền bị từ chối",
+  };
+  return labels[entryType] || entryType;
+};
 
 // GET /api/wallet/status
 router.get("/status", requireAuth, async (req: AuthedRequest, res: Response): Promise<any> => {
@@ -40,7 +56,10 @@ router.get("/status", requireAuth, async (req: AuthedRequest, res: Response): Pr
       success: true,
       data: {
         balance: wallet,
-        ledger,
+        ledger: ledger.map((entry: any) => ({
+          ...entry,
+          entry_type_label: walletEntryTypeLabel(entry.entry_type),
+        })),
         withdrawals
       }
     });
@@ -126,6 +145,24 @@ router.post("/withdraw", requireAuth, async (req: AuthedRequest, res: Response):
     );
 
     await connection.commit();
+    await notifyAdmins({
+      actorId: req.user.id,
+      type: "WITHDRAW_REQUEST",
+      title: "Có yêu cầu rút tiền mới",
+      body: `${req.user.email} vừa gửi yêu cầu rút ${numAmount.toLocaleString("vi-VN")}đ.`,
+      linkUrl: "/?tab=admin&withdrawals=1",
+      entityType: "WITHDRAW_REQUEST",
+      entityId: String(result.insertId),
+      metadata: { amount: numAmount, bankAccountNo },
+    });
+    await notifyZaloAdmins("WITHDRAW_REQUEST", [
+      ["👤 User", req.user.email],
+      ["💰 Số tiền", zaloFormat.money(numAmount)],
+      ["🏦 STK", bankAccountNo],
+      ["👛 Chủ TK", bankAccountName],
+      ["🆔 Mã yêu cầu", result.insertId],
+      ["🧭 Admin", "Vào trang Admin để duyệt/từ chối"],
+    ]);
     return res.json({ success: true, message: `Yêu cầu rút tiền ${numAmount.toLocaleString()}đ đã được gửi đi!` });
   } catch (error: any) {
     await connection.rollback();

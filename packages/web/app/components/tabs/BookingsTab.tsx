@@ -13,6 +13,7 @@ type BookingsTabProps = {
   setTopupAmountInput: (val: string) => void;
   setActiveTab: (val: any) => void;
   handleJoinClassroom: (appt: any) => void;
+  handleWalletPayAppointment?: (appt: any) => void;
 };
 
 export default function BookingsTab({
@@ -28,6 +29,7 @@ export default function BookingsTab({
   setTopupAmountInput,
   setActiveTab,
   handleJoinClassroom,
+  handleWalletPayAppointment,
 }: BookingsTabProps) {
   return (
     <div className="space-y-4">
@@ -55,7 +57,7 @@ export default function BookingsTab({
                     </span>
                   ) : (
                     <span className="bg-emerald-500/10 text-emerald-600 text-[10px] font-medium px-2 py-0.5 rounded-full border border-emerald-500/10">
-                      Đã thanh toán (Holding an toàn)
+                      Đã thanh toán - giam 3 ngày
                     </span>
                   )}
                 </div>
@@ -92,41 +94,11 @@ export default function BookingsTab({
                     <button
                       type="button"
                       onClick={async () => {
-                        if (wallet.available_balance >= Number(appt.price_paid)) {
-                          if (confirm(`Xác nhận thanh toán ${formatVND(appt.price_paid)} từ ví nội bộ?`)) {
-                            try {
-                              const res = await fetch("http://localhost:5000/api/payments/wallet-pay", {
-                                method: "POST",
-                                headers: {
-                                  "Content-Type": "application/json",
-                                  Authorization: `Bearer ${token}`,
-                                },
-                                body: JSON.stringify({ appointmentId: appt.id }),
-                              });
-                              const json = await res.json();
-                              if (json.success) {
-                                showKntechAlert("success", "Thanh toán thành công", json.message);
-                                fetchUserData();
-                              } else {
-                                showKntechAlert("error", "Lỗi giao dịch", json.message);
-                              }
-                            } catch (e) {
-                              showKntechAlert("error", "Lỗi kết nối", "Không thể thanh toán bằng ví.");
-                            }
-                          }
-                        } else {
-                          showKntechAlert(
-                            "warning",
-                            "Số dư không đủ",
-                            `Học phí yêu cầu ${formatVND(appt.price_paid)} nhưng ví nội bộ của bác chỉ còn ${formatVND(
-                              wallet.available_balance
-                            )}. Đang chuyển hướng sang ví nội bộ để nạp thêm...`
-                          );
-                          setTimeout(() => {
-                            setTopupAmountInput(String(Number(appt.price_paid) - wallet.available_balance));
-                            setActiveTab("wallet");
-                          }, 2500);
+                        if (handleWalletPayAppointment) {
+                          handleWalletPayAppointment(appt);
+                          return;
                         }
+                        showKntechAlert("error", "Thiếu handler", "Chưa cấu hình xử lý thanh toán ví nội bộ.");
                       }}
                       className="bg-emerald-600 text-white text-[11px] font-semibold px-4 py-2 rounded-lg hover:bg-emerald-700 cursor-pointer shadow-sm"
                     >

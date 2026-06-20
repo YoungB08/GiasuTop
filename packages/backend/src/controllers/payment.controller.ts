@@ -4,6 +4,8 @@ import pool from "../config/db";
 import { getEnv } from "../utils/env";
 import { walletHoldToTutor } from "../services/wallet.service";
 import { getSePayClient } from "../config/sepay";
+import { createNotification, createNotifications } from "../services/notification.service";
+import { notifyZaloAdmins, zaloFormat } from "../services/zaloAdmin.service";
 
 const CreateQrSchema = z.object({
   appointmentId: z.string().min(1).max(36).optional(),
@@ -56,7 +58,12 @@ function buildQrUrl(params: {
   acc: string;
   amount: number;
   des: string;
-  template?: "compact" | "qronly";
+  template?: "" | "compact" | "qronly" | "standee";
+  showInfo?: boolean;
+  download?: boolean;
+  fullAcc?: boolean;
+  holder?: string;
+  store?: string;
 }) {
   const q = new URLSearchParams();
   q.set("bank", params.bank);
@@ -64,7 +71,101 @@ function buildQrUrl(params: {
   q.set("amount", String(Math.round(params.amount)));
   q.set("des", params.des);
   if (params.template) q.set("template", params.template);
+  if (params.showInfo !== undefined) q.set("showinfo", String(params.showInfo));
+  if (params.download !== undefined) q.set("download", String(params.download));
+  if (params.fullAcc !== undefined) q.set("fullacc", String(params.fullAcc));
+  if (params.holder) q.set("holder", params.holder);
+  if (params.store) q.set("store", params.store);
   return `https://qr.sepay.vn/img?${q.toString()}`;
+}
+
+const ESCROW_HOLD_DAYS = 3;
+let banksCache: { data: any; expiresAt: number } | null = null;
+
+function roundMoney(value: number) {
+  return Math.round(value * 100) / 100;
+}
+
+function buildEscrowReleaseDate() {
+  const releaseDate = new Date();
+  releaseDate.setDate(releaseDate.getDate() + ESCROW_HOLD_DAYS);
+  return releaseDate;
+}
+
+async function settleAppointmentsIntoEscrow(params: {
+  db: any;
+  appointmentId: string;
+  refType: string;
+  refId: string;
+  requireUnpaid?: boolean;
+}) {
+  const [apptRows]: any = await params.db.query(
+    `SELECT a.id, a.student_id, a.tutor_id, a.price_paid, a.payment_status,
+            COALESCE(tp.commission_percent, 10.00) as commission_percent
+     FROM appointments a
+     JOIN tutor_profiles tp ON tp.user_id = a.tutor_id
+     WHERE (a.id = ? OR a.parent_appointment_id = ?)
+     FOR UPDATE`,
+    [params.appointmentId, params.appointmentId]
+  );
+
+  if (!apptRows || apptRows.length === 0) {
+    throw new Error("Appointment not found for payment");
+  }
+
+  if (params.requireUnpaid !== false) {
+    const alreadyPaid = apptRows.find((appt: any) => appt.payment_status !== "UNPAID");
+    if (alreadyPaid) {
+      throw new Error("Lich hoc nay da duoc thanh toan hoac dang cho xu ly.");
+    }
+  }
+
+  const releaseDate = buildEscrowReleaseDate();
+  let totalAmount = 0;
+  let totalCommission = 0;
+  let totalTutorEarning = 0;
+
+  for (const appt of apptRows) {
+    const amount = Number(appt.price_paid || 0);
+    const commissionPercent = Number(appt.commission_percent ?? 10);
+    const commissionAmount = roundMoney(amount * (commissionPercent / 100));
+    const tutorEarning = roundMoney(amount - commissionAmount);
+
+    totalAmount += amount;
+    totalCommission += commissionAmount;
+    totalTutorEarning += tutorEarning;
+
+    await params.db.query(
+      `UPDATE appointments
+       SET payment_status = 'HOLDING',
+           status = 'CONFIRMED',
+           commission_percent_snapshot = ?,
+           commission_amount = ?,
+           tutor_earning = ?,
+           escrow_release_date = ?,
+           escrow_released_at = NULL
+       WHERE id = ?`,
+      [commissionPercent, commissionAmount, tutorEarning, releaseDate, appt.id]
+    );
+
+    await walletHoldToTutor({
+      tutorId: appt.tutor_id,
+      amount: tutorEarning,
+      refType: params.refType,
+      refId: appt.id,
+    }, params.db);
+  }
+
+  return {
+    appointments: apptRows,
+    studentId: apptRows[0].student_id,
+    tutorId: apptRows[0].tutor_id,
+    commissionPercent: Number(apptRows[0].commission_percent ?? 10),
+    releaseDate,
+    totalAmount: roundMoney(totalAmount),
+    totalCommission: roundMoney(totalCommission),
+    totalTutorEarning: roundMoney(totalTutorEarning),
+  };
 }
 
 export async function createAppointmentQr(req: Request, res: Response) {
@@ -82,18 +183,44 @@ export async function createAppointmentQr(req: Request, res: Response) {
 
   let amount = 0;
   let des = "";
+  let apptMeta: any = null;
 
   if (apptId) {
-    const [rows] = await pool.query(
-      "SELECT id, price_paid, payment_status FROM appointments WHERE id = ? LIMIT 1",
-      [apptId]
+    const [rows]: any = await pool.query(
+      "SELECT id, price_paid, payment_status, parent_appointment_id, schedule_type FROM appointments WHERE id = ? OR parent_appointment_id = ?",
+      [apptId, apptId]
     );
-    const appt = Array.isArray(rows) ? (rows as any[])[0] : undefined;
-    if (!appt) return res.status(404).json({ success: false, message: "Appointment not found" });
+    if (rows.length === 0) return res.status(404).json({ success: false, message: "Appointment not found" });
+    const appt = rows[0];
 
-    amount = Number(appt.price_paid);
+    const isLongTerm = rows.some((r: any) => r.parent_appointment_id === apptId || r.schedule_type === "LONG_TERM");
+    if (isLongTerm) {
+      amount = rows.reduce((sum: number, r: any) => sum + Number(r.price_paid), 0);
+    } else {
+      amount = Number(appt.price_paid);
+    }
     if (!Number.isFinite(amount) || amount <= 0) {
       return res.status(400).json({ success: false, message: "Invalid appointment amount" });
+    }
+
+    // Fetch details for payment metadata card
+    const [detailRows]: any = await pool.query(
+      "SELECT a.start_time, a.price_paid, u.full_name as tutor_name " +
+      "FROM appointments a " +
+      "JOIN users u ON a.tutor_id = u.id " +
+      "WHERE a.id = ? OR a.parent_appointment_id = ? " +
+      "ORDER BY a.session_number ASC LIMIT 1",
+      [apptId, apptId]
+    );
+    if (detailRows.length > 0) {
+      const first = detailRows[0];
+      apptMeta = {
+        tutor_name: isLongTerm 
+          ? `${first.tutor_name} (Đăng ký dài hạn ${rows.length} buổi)`
+          : first.tutor_name,
+        start_time: first.start_time,
+        price_paid: String(amount),
+      };
     }
 
     const [payInsert]: any = await pool.query(
@@ -129,7 +256,12 @@ export async function createAppointmentQr(req: Request, res: Response) {
     acc: env.SEPAY_ACCOUNT_NUMBER,
     amount,
     des,
-    template: "compact",
+    template: env.SEPAY_QR_TEMPLATE,
+    showInfo: env.SEPAY_QR_SHOW_INFO,
+    download: env.SEPAY_QR_DOWNLOAD,
+    fullAcc: env.SEPAY_QR_FULL_ACC,
+    holder: env.SEPAY_ACCOUNT_NAME,
+    store: env.SEPAY_QR_STORE_NAME,
   });
 
   let checkoutUrl = "";
@@ -172,8 +304,27 @@ export async function createAppointmentQr(req: Request, res: Response) {
       qrUrl,
       checkoutUrl,
       checkoutFormfields,
+      appointment: apptMeta,
     },
   });
+}
+
+export async function listSepayBanks(_req: Request, res: Response): Promise<any> {
+  try {
+    if (banksCache && banksCache.expiresAt > Date.now()) {
+      return res.json({ success: true, data: banksCache.data });
+    }
+
+    const response = await fetch("https://qr.sepay.vn/banks.json");
+    if (!response.ok) {
+      throw new Error(`SePay banks HTTP ${response.status}`);
+    }
+    const data = await response.json();
+    banksCache = { data, expiresAt: Date.now() + 24 * 60 * 60 * 1000 };
+    return res.json({ success: true, data });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message || "Không thể tải danh sách ngân hàng SePay." });
+  }
 }
 
 export async function getPaymentStatus(req: Request, res: Response) {
@@ -291,30 +442,29 @@ export async function sepayWebhook(req: Request, res: Response) {
     payload.id,
   ]);
   const exists = Array.isArray(existsRows) && (existsRows as any[]).length > 0;
-  if (exists) {
-    return res.json({ success: true, message: "Duplicate ignored" });
-  }
 
   const amountIn = payload.transferType === "in" ? payload.transferAmount : 0;
   const amountOut = payload.transferType === "out" ? payload.transferAmount : 0;
 
-  await pool.query(
-    "INSERT INTO sepay_transactions (sepay_id, gateway, transaction_date, account_number, sub_account, amount_in, amount_out, accumulated, code, transaction_content, reference_code, body) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-    [
-      payload.id,
-      payload.gateway,
-      payload.transactionDate,
-      payload.accountNumber ?? null,
-      null, // subAccount
-      amountIn,
-      amountOut,
-      0, // accumulated
-      null, // code
-      payload.content ?? null,
-      payload.referenceCode ?? null,
-      payload.description ?? null,
-    ]
-  );
+  if (!exists) {
+    await pool.query(
+      "INSERT INTO sepay_transactions (sepay_id, gateway, transaction_date, account_number, sub_account, amount_in, amount_out, accumulated, code, transaction_content, reference_code, body) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      [
+        payload.id,
+        payload.gateway,
+        payload.transactionDate,
+        payload.accountNumber ?? null,
+        null, // subAccount
+        amountIn,
+        amountOut,
+        0, // accumulated
+        null, // code
+        payload.content ?? null,
+        payload.referenceCode ?? null,
+        payload.description ?? null,
+      ]
+    );
+  }
 
   // Parse order code DH(\d+) (appointment) or ND(\d+) (wallet topup) from content
   const content = payload.content ?? "";
@@ -351,24 +501,60 @@ export async function sepayWebhook(req: Request, res: Response) {
       return res.json({ success: true, message: "Already paid" });
     }
 
-    await pool.query("UPDATE payments SET status = 'PAID', paid_at = NOW() WHERE id = ?", [paymentId]);
-    // Move appointment to HOLDING and credit tutor holding wallet
-    const [apptRows] = await pool.query("SELECT tutor_id FROM appointments WHERE id = ? LIMIT 1", [
-      payment.appointment_id,
-    ]);
-    const appt = Array.isArray(apptRows) ? (apptRows as any[])[0] : undefined;
-    if (!appt) {
-      return res.status(200).json({ success: false, message: "Appointment not found for payment" });
+    const sepayConnection = await pool.getConnection();
+    let sepaySettlement: any;
+    try {
+      await sepayConnection.beginTransaction();
+      await sepayConnection.query("UPDATE payments SET status = 'PAID', paid_at = NOW() WHERE id = ?", [paymentId]);
+      sepaySettlement = await settleAppointmentsIntoEscrow({
+        db: sepayConnection,
+        appointmentId: payment.appointment_id,
+        refType: "PAYMENT",
+        refId: String(paymentId),
+      });
+      await sepayConnection.commit();
+    } catch (err: any) {
+      await sepayConnection.rollback();
+      return res.status(200).json({ success: false, message: err.message || "Failed to settle payment" });
+    } finally {
+      sepayConnection.release();
     }
-
-    await pool.query("UPDATE appointments SET payment_status = 'HOLDING' WHERE id = ?", [payment.appointment_id]);
-    await walletHoldToTutor({
-      tutorId: appt.tutor_id,
-      amount: payload.transferAmount,
-      refType: "PAYMENT",
-      refId: String(paymentId),
-    });
-
+    await createNotifications([
+      {
+        recipientId: sepaySettlement.studentId,
+        actorId: null,
+        type: "PAYMENT_PAID",
+        title: "Thanh toán lớp học thành công",
+        body: "Lớp học đã được xác nhận. Tiền gia sư sẽ bị giam 3 ngày và chỉ được trả nếu không có khiếu nại.",
+        linkUrl: "/?tab=bookings",
+        entityType: "APPOINTMENT",
+        entityId: payment.appointment_id,
+        metadata: {
+          paymentId,
+          amount: payload.transferAmount,
+          commissionAmount: sepaySettlement.totalCommission,
+          tutorEarning: sepaySettlement.totalTutorEarning,
+          escrowReleaseDate: sepaySettlement.releaseDate,
+        },
+      },
+      {
+        recipientId: sepaySettlement.tutorId,
+        actorId: sepaySettlement.studentId,
+        type: "BOOKING_CONFIRMED",
+        title: "Lịch học đã được thanh toán",
+        body: "Học viên đã thanh toán. Tiền sau chiết khấu đang được giam 3 ngày và sẽ vào ví khả dụng nếu không có khiếu nại.",
+        linkUrl: "/?tab=bookings",
+        entityType: "APPOINTMENT",
+        entityId: payment.appointment_id,
+        metadata: {
+          paymentId,
+          amount: payload.transferAmount,
+          commissionAmount: sepaySettlement.totalCommission,
+          tutorEarning: sepaySettlement.totalTutorEarning,
+          escrowReleaseDate: sepaySettlement.releaseDate,
+        },
+      },
+    ]);
     return res.json({ success: true });
   } else if (matchTopup) {
     const topupId = Number(matchTopup[1]);
@@ -377,7 +563,10 @@ export async function sepayWebhook(req: Request, res: Response) {
     }
 
     const [topupRows] = await pool.query(
-      "SELECT id, user_id, amount, status FROM wallet_topups WHERE id = ? LIMIT 1",
+      `SELECT wt.id, wt.user_id, wt.amount, wt.status, u.full_name, u.email
+       FROM wallet_topups wt
+       LEFT JOIN users u ON u.id = wt.user_id
+       WHERE wt.id = ? LIMIT 1`,
       [topupId]
     );
     const topup = Array.isArray(topupRows) ? (topupRows as any[])[0] : undefined;
@@ -424,6 +613,26 @@ export async function sepayWebhook(req: Request, res: Response) {
       );
 
       await connection.commit();
+      await createNotification({
+        recipientId: topup.user_id,
+        actorId: null,
+        type: "WALLET_TOPUP",
+        title: "Nạp ví thành công",
+        body: `Ví của bạn vừa được cộng ${Number(payload.transferAmount).toLocaleString("vi-VN")}đ.`,
+        linkUrl: "/?tab=wallet",
+        entityType: "WALLET_TOPUP",
+        entityId: String(topupId),
+        metadata: { amount: payload.transferAmount },
+      });
+      await notifyZaloAdmins("TOPUP_PAID", [
+        ["👤 Người nạp", topup.full_name || topup.email || topup.user_id],
+        ["📧 Email", topup.email],
+        ["💰 Số tiền", zaloFormat.money(payload.transferAmount)],
+        ["🏦 Gateway", payload.gateway],
+        ["🧾 Nội dung", payload.content || content],
+        ["🆔 Mã nạp", topupId],
+        ["⏱️ Ghi nhận", zaloFormat.time(new Date())],
+      ]);
       return res.json({ success: true });
     } catch (err: any) {
       await connection.rollback();
@@ -446,7 +655,10 @@ export async function mockSepayPayment(req: Request, res: Response): Promise<any
 
     if (isTopup) {
       const [topupRows] = await pool.query(
-        "SELECT id, user_id, amount, status FROM wallet_topups WHERE id = ? LIMIT 1",
+        `SELECT wt.id, wt.user_id, wt.amount, wt.status, u.full_name, u.email
+         FROM wallet_topups wt
+         LEFT JOIN users u ON u.id = wt.user_id
+         WHERE wt.id = ? LIMIT 1`,
         [paymentId]
       );
       const topup = Array.isArray(topupRows) ? (topupRows as any[])[0] : undefined;
@@ -492,6 +704,26 @@ export async function mockSepayPayment(req: Request, res: Response): Promise<any
         connection.release();
       }
 
+      await createNotification({
+        recipientId: topup.user_id,
+        actorId: null,
+        type: "WALLET_TOPUP",
+        title: "Nạp ví thành công",
+        body: `Ví của bạn vừa được cộng ${Number(topup.amount).toLocaleString("vi-VN")}đ.`,
+        linkUrl: "/?tab=wallet",
+        entityType: "WALLET_TOPUP",
+        entityId: String(paymentId),
+        metadata: { amount: Number(topup.amount), simulated: true },
+      });
+      await notifyZaloAdmins("TOPUP_PAID", [
+        ["👤 Người nạp", topup.full_name || topup.email || topup.user_id],
+        ["📧 Email", topup.email],
+        ["💰 Số tiền", zaloFormat.money(topup.amount)],
+        ["🏦 Gateway", "SIMULATE"],
+        ["🆔 Mã nạp", paymentId],
+        ["⏱️ Ghi nhận", zaloFormat.time(new Date())],
+      ]);
+
       return res.json({ success: true, message: "Mock topup processed successfully!" });
     }
 
@@ -508,25 +740,62 @@ export async function mockSepayPayment(req: Request, res: Response): Promise<any
       return res.json({ success: true, message: "Already paid" });
     }
 
-    await pool.query("UPDATE payments SET status = 'PAID', paid_at = NOW() WHERE id = ?", [paymentId]);
-
-    const [apptRows] = await pool.query("SELECT tutor_id FROM appointments WHERE id = ? LIMIT 1", [
-      payment.appointment_id,
-    ]);
-    const appt = Array.isArray(apptRows) ? (apptRows as any[])[0] : undefined;
-    if (!appt) {
-      return res.status(404).json({ success: false, message: "Appointment not found for payment" });
+    const mockConnection = await pool.getConnection();
+    let mockSettlement: any;
+    try {
+      await mockConnection.beginTransaction();
+      await mockConnection.query("UPDATE payments SET status = 'PAID', paid_at = NOW() WHERE id = ?", [paymentId]);
+      mockSettlement = await settleAppointmentsIntoEscrow({
+        db: mockConnection,
+        appointmentId: payment.appointment_id,
+        refType: "PAYMENT",
+        refId: String(paymentId),
+      });
+      await mockConnection.commit();
+    } catch (err: any) {
+      await mockConnection.rollback();
+      throw err;
+    } finally {
+      mockConnection.release();
     }
-
-    await pool.query("UPDATE appointments SET payment_status = 'HOLDING', status = 'CONFIRMED' WHERE id = ?", [payment.appointment_id]);
-    
-    await walletHoldToTutor({
-      tutorId: appt.tutor_id,
-      amount: Number(payment.amount),
-      refType: "PAYMENT",
-      refId: String(paymentId),
-    });
-
+    await createNotifications([
+      {
+        recipientId: mockSettlement.studentId,
+        actorId: null,
+        type: "PAYMENT_PAID",
+        title: "Thanh toán lớp học thành công",
+        body: "Lớp học đã được xác nhận. Tiền gia sư sẽ bị giam 3 ngày và chỉ được trả nếu không có khiếu nại.",
+        linkUrl: "/?tab=bookings",
+        entityType: "APPOINTMENT",
+        entityId: payment.appointment_id,
+        metadata: {
+          paymentId,
+          amount: Number(payment.amount),
+          simulated: true,
+          commissionAmount: mockSettlement.totalCommission,
+          tutorEarning: mockSettlement.totalTutorEarning,
+          escrowReleaseDate: mockSettlement.releaseDate,
+        },
+      },
+      {
+        recipientId: mockSettlement.tutorId,
+        actorId: mockSettlement.studentId,
+        type: "BOOKING_CONFIRMED",
+        title: "Lịch học đã được thanh toán",
+        body: "Học viên đã thanh toán. Tiền sau chiết khấu đang được giam 3 ngày và sẽ vào ví khả dụng nếu không có khiếu nại.",
+        linkUrl: "/?tab=bookings",
+        entityType: "APPOINTMENT",
+        entityId: payment.appointment_id,
+        metadata: {
+          paymentId,
+          amount: Number(payment.amount),
+          simulated: true,
+          commissionAmount: mockSettlement.totalCommission,
+          tutorEarning: mockSettlement.totalTutorEarning,
+          escrowReleaseDate: mockSettlement.releaseDate,
+        },
+      },
+    ]);
     return res.json({ success: true, message: "Mock payment processed successfully!" });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
@@ -577,40 +846,55 @@ export async function walletPayAppointment(req: any, res: Response): Promise<any
         refId: appointmentId,
       }, connection);
 
-      const [tutorRows]: any = await connection.query(
-        "SELECT commission_percent FROM tutor_profiles WHERE user_id = ?",
-        [apptRows[0].tutor_id]
-      );
-      const commissionPercent = Number(tutorRows[0]?.commission_percent ?? 10.00);
-
-      const releaseDate = new Date();
-      releaseDate.setDate(releaseDate.getDate() + 2); // Escrow hold for 2 days
-
-      const { walletHoldToTutor } = require("../services/wallet.service");
-
-      // Update and hold each appointment individually (escrow release is per session/appointment)
-      for (const appt of apptRows) {
-        const amount = Number(appt.price_paid);
-        const commissionAmount = amount * (commissionPercent / 100);
-        const tutorAmount = amount - commissionAmount;
-
-        await connection.query(
-          "UPDATE appointments SET payment_status = 'HOLDING', status = 'CONFIRMED', escrow_release_date = ? WHERE id = ?",
-          [releaseDate, appt.id]
-        );
-
-        await walletHoldToTutor({
-          tutorId: appt.tutor_id,
-          amount: tutorAmount,
-          refType: "BOOKING",
-          refId: appt.id,
-        }, connection);
-      }
+      const settlement = await settleAppointmentsIntoEscrow({
+        db: connection,
+        appointmentId,
+        refType: "BOOKING",
+        refId: appointmentId,
+        requireUnpaid: false,
+      });
 
       await connection.commit();
+      await createNotifications([
+        {
+          recipientId: apptRows[0].student_id,
+          actorId: null,
+          type: "PAYMENT_PAID",
+          title: "Thanh toán ví thành công",
+          body: `Bạn đã thanh toán ${totalAmount.toLocaleString("vi-VN")}đ bằng ví nội bộ. Tiền gia sư sẽ bị giam 3 ngày nếu không có khiếu nại.`,
+          linkUrl: "/?tab=bookings",
+          entityType: "APPOINTMENT",
+          entityId: appointmentId,
+          metadata: {
+            amount: totalAmount,
+            method: "WALLET",
+            commissionAmount: settlement.totalCommission,
+            tutorEarning: settlement.totalTutorEarning,
+            escrowReleaseDate: settlement.releaseDate,
+          },
+        },
+        {
+          recipientId: apptRows[0].tutor_id,
+          actorId: userId,
+          type: "BOOKING_CONFIRMED",
+          title: "Lịch học đã được thanh toán",
+          body: "Học viên đã thanh toán bằng ví nội bộ. Tiền sau chiết khấu đang được giam 3 ngày và sẽ vào ví khả dụng nếu không có khiếu nại.",
+          linkUrl: "/?tab=bookings",
+          entityType: "APPOINTMENT",
+          entityId: appointmentId,
+          metadata: {
+            amount: totalAmount,
+            method: "WALLET",
+            commissionAmount: settlement.totalCommission,
+            tutorEarning: settlement.totalTutorEarning,
+            escrowReleaseDate: settlement.releaseDate,
+          },
+        },
+      ]);
+      const commissionPercent = settlement.commissionPercent;
       return res.json({
         success: true,
-        message: `Thanh toán học phí thành công bằng ví nội bộ! (Đã trừ ${totalAmount.toLocaleString("vi-VN")} đ số dư ví, phí dịch vụ nền tảng ${commissionPercent}%)`,
+        message: `Thanh toán học phí thành công bằng ví nội bộ! Đã trừ ${totalAmount.toLocaleString("vi-VN")}đ. Phí dịch vụ nền tảng ${commissionPercent}% đã được giữ lại; tiền gia sư bị giam 3 ngày nếu không có khiếu nại.`,
       });
     } catch (innerErr: any) {
       await connection.rollback();

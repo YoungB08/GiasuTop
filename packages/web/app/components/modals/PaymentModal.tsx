@@ -18,6 +18,7 @@ type PaymentModalProps = {
   setTopupAmountInput: (val: string) => void;
   setActiveTab: (tab: any) => void;
   handleSimulatePayment: () => void;
+  handleWalletPayAppointment: (appt: any) => void;
 };
 
 export default function PaymentModal({
@@ -38,6 +39,7 @@ export default function PaymentModal({
   setTopupAmountInput,
   setActiveTab,
   handleSimulatePayment,
+  handleWalletPayAppointment,
 }: PaymentModalProps) {
   if (!payingAppt) return null;
 
@@ -95,46 +97,7 @@ export default function PaymentModal({
               </button>
               <button
                 type="button"
-                onClick={async () => {
-                  if (wallet.available_balance >= Number(payingAppt.price_paid)) {
-                    if (confirm(`Xác nhận thanh toán ${formatVND(payingAppt.price_paid)} từ ví nội bộ?`)) {
-                      try {
-                        const res = await fetch("http://localhost:5000/api/payments/wallet-pay", {
-                          method: "POST",
-                          headers: {
-                            "Content-Type": "application/json",
-                            Authorization: `Bearer ${token}`,
-                          },
-                          body: JSON.stringify({ appointmentId: payingAppt.id }),
-                        });
-                        const json = await res.json();
-                        if (json.success) {
-                          showKntechAlert("success", "Thanh toán thành công", json.message);
-                          logClientActivity("WALLET_PAY_APPOINTMENT", `Thanh toán học phí lớp ${payingAppt.id} bằng ví nội bộ`);
-                          setPayingAppt(null);
-                          fetchUserData();
-                        } else {
-                          showKntechAlert("error", "Lỗi giao dịch", json.message);
-                        }
-                      } catch (e) {
-                        showKntechAlert("error", "Lỗi kết nối", "Không thể thanh toán bằng ví.");
-                      }
-                    }
-                  } else {
-                    showKntechAlert(
-                      "warning",
-                      "Số dư không đủ",
-                      `Học phí yêu cầu ${formatVND(payingAppt.price_paid)} nhưng ví nội bộ của bác chỉ còn ${formatVND(
-                        wallet.available_balance
-                      )}. Đang chuyển hướng sang ví nội bộ để nạp thêm...`
-                    );
-                    setPayingAppt(null);
-                    setTimeout(() => {
-                      setTopupAmountInput(String(Number(payingAppt.price_paid) - wallet.available_balance));
-                      setActiveTab("wallet");
-                    }, 2500);
-                  }
-                }}
+                onClick={() => handleWalletPayAppointment(payingAppt)}
                 className="w-full h-11 bg-emerald-600 text-white text-xs font-semibold rounded-lg hover:bg-emerald-700 transition cursor-pointer flex items-center justify-center gap-1.5 shadow"
               >
                 <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">

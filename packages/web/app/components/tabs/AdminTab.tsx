@@ -2,9 +2,11 @@ import React from "react";
 import { getAvatarUrl } from "../../utils/avatar";
 import KntechDataTable, { Column } from "../KntechDataTable";
 
+type AdminTabKey = "dashboard" | "subjects" | "tutors" | "monitor" | "users" | "pending_docs" | "news_crud" | "notifications" | "escrow";
+
 type AdminTabProps = {
-  adminTab: string;
-  setAdminTab: (tab: string) => void;
+  adminTab: AdminTabKey;
+  setAdminTab: React.Dispatch<React.SetStateAction<AdminTabKey>>;
   pendingTutors: any[];
   pendingDocs: any[];
   news: any[];
@@ -16,13 +18,13 @@ type AdminTabProps = {
   setEditingSubject: (subject: any) => void;
   handleDeleteSubject: (id: number) => void;
   loadingPendingDocs: boolean;
-  handleDecideDocument: (id: number, status: string) => void;
+  handleDecideDocument: (id: number, status: "APPROVED" | "REJECTED") => void;
   setEditingNews: (news: any | null) => void;
   setNewsForm: (form: any) => void;
   setNewsFormOpen: (open: boolean) => void;
   handleDeleteNews: (id: number) => void;
   loadingPending: boolean;
-  handleDecideTutor: (id: string, status: string) => void;
+  handleDecideTutor: (id: string, status: "APPROVED" | "REJECTED") => void;
   setRejectingTutorId: (id: string | null) => void;
   systemStats: any;
   systemLogs: any[];
@@ -32,9 +34,20 @@ type AdminTabProps = {
   fetchSystemUsers: () => void;
   handleEditUserClick: (u: any) => void;
   loadingCommissions: boolean;
-  handleDecideCommission: (userId: string, status: string) => void;
+  handleDecideCommission: (userId: string, status: "APPROVED" | "REJECTED") => void;
   fetchPendingCommissions: () => void;
+  adminNotificationForm: {
+    title: string;
+    body: string;
+    linkUrl: string;
+    role: "ALL" | "STUDENT" | "TUTOR" | "ADMIN";
+  };
+  setAdminNotificationForm: (form: any) => void;
+  handleSendAdminNotification: (e: React.FormEvent) => void;
+  sendingAdminNotification: boolean;
   formatVND: (val: any) => string;
+  fetchPendingTutors: () => void;
+  setPreviewDoc: (doc: any) => void;
 };
 
 export default function AdminTab({
@@ -69,15 +82,49 @@ export default function AdminTab({
   loadingCommissions,
   handleDecideCommission,
   fetchPendingCommissions,
+  adminNotificationForm,
+  setAdminNotificationForm,
+  handleSendAdminNotification,
+  sendingAdminNotification,
   formatVND,
+  fetchPendingTutors,
+  setPreviewDoc,
 }: AdminTabProps) {
   const token = typeof window !== "undefined" ? localStorage.getItem("token") || "" : "";
   const [previewImageUrl, setPreviewImageUrl] = React.useState<string | null>(null);
+
+  const handleDeleteTutorDoc = async (docId: number) => {
+    if (!window.confirm("Bác có chắc chắn muốn xóa tài liệu minh chứng này?")) return;
+    try {
+      const res = await fetch(`http://localhost:5000/api/admin/tutor-documents/${docId}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const json = await res.json();
+      if (json.success) {
+        alert("Đã xóa tài liệu thành công!");
+        fetchPendingTutors();
+      } else {
+        alert(json.message || "Lỗi khi xóa tài liệu.");
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Lỗi kết nối máy chủ.");
+    }
+  };
 
   // Stats Dashboard States
   const [dashboardData, setDashboardData] = React.useState<any>(null);
   const [loadingDashboard, setLoadingDashboard] = React.useState(false);
   const [activePopup, setActivePopup] = React.useState<"tutors" | "students" | "appointments" | "payments" | null>(null);
+  const [escrowAppointments, setEscrowAppointments] = React.useState<any[]>([]);
+  const [loadingEscrow, setLoadingEscrow] = React.useState(false);
+  const [releasingEscrowId, setReleasingEscrowId] = React.useState<string | null>(null);
+  const [escrowNoteTarget, setEscrowNoteTarget] = React.useState<string | null>(null);
+  const [escrowAdminNote, setEscrowAdminNote] = React.useState("");
+  const [escrowToast, setEscrowToast] = React.useState<{ type: "success" | "error"; message: string } | null>(null);
 
   const fetchDashboardData = async () => {
     if (!token) return;
@@ -100,6 +147,62 @@ export default function AdminTab({
   React.useEffect(() => {
     if (adminTab === "dashboard") {
       fetchDashboardData();
+    }
+  }, [adminTab]);
+
+  const fetchEscrowAppointments = async () => {
+    if (!token) return;
+    setLoadingEscrow(true);
+    try {
+      const res = await fetch("http://localhost:5000/api/admin/escrow/appointments", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const json = await res.json();
+      if (json.success) {
+        setEscrowAppointments(json.data || []);
+      } else {
+        setEscrowToast({ type: "error", message: json.message || "Không thể tải danh sách tiền giam." });
+      }
+    } catch (e) {
+      console.error("Lỗi tải danh sách tiền giam:", e);
+      setEscrowToast({ type: "error", message: "Lỗi kết nối khi tải danh sách tiền giam." });
+    } finally {
+      setLoadingEscrow(false);
+    }
+  };
+
+  const handleReleaseEscrow = async (appointmentId: string, adminNote = "") => {
+    setReleasingEscrowId(appointmentId);
+    try {
+      const res = await fetch(`http://localhost:5000/api/admin/escrow/${appointmentId}/release`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ adminNote }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        setEscrowToast({ type: "success", message: "Đã duyệt trả tiền vào ví khả dụng của gia sư." });
+        setEscrowNoteTarget(null);
+        setEscrowAdminNote("");
+        fetchEscrowAppointments();
+        fetchDashboardData();
+      } else {
+        setEscrowToast({ type: "error", message: json.message || "Không thể duyệt trả khoản giam." });
+      }
+    } catch (e) {
+      console.error("Lỗi duyệt trả tiền giam:", e);
+      setEscrowToast({ type: "error", message: "Lỗi kết nối khi duyệt trả tiền giam." });
+    } finally {
+      setReleasingEscrowId(null);
+    }
+  };
+
+  React.useEffect(() => {
+    if (adminTab === "escrow") {
+      fetchEscrowAppointments();
     }
   }, [adminTab]);
 
@@ -399,6 +502,54 @@ export default function AdminTab({
     }
   ];
 
+  const escrowColumns: Column[] = [
+    { key: "id", label: "Mã lớp", sortable: true, render: (row) => <span className="font-mono text-slate-400">#{row.id}</span> },
+    { key: "tutor_name", label: "Gia sư", sortable: true },
+    { key: "student_name", label: "Học viên", sortable: true },
+    {
+      key: "price_paid",
+      label: "Doanh thu",
+      sortable: true,
+      render: (row) => <span className="font-mono font-semibold">{formatVND(row.price_paid)}</span>
+    },
+    {
+      key: "commission_amount",
+      label: "Hoa hồng",
+      sortable: true,
+      render: (row) => <span className="font-mono text-rose-600 font-semibold">{formatVND(row.commission_amount || 0)}</span>
+    },
+    {
+      key: "tutor_earning",
+      label: "Trả gia sư",
+      sortable: true,
+      render: (row) => <span className="font-mono text-emerald-600 font-bold">{formatVND(row.tutor_earning || 0)}</span>
+    },
+    {
+      key: "escrow_release_date",
+      label: "Tự mở giam",
+      sortable: true,
+      render: (row) => row.escrow_release_date ? <span>{new Date(row.escrow_release_date).toLocaleString("vi-VN")}</span> : <span className="text-slate-400">-</span>
+    },
+    {
+      key: "actions",
+      label: "Thao tác",
+      sortable: false,
+      render: (row) => (
+        <button
+          type="button"
+          disabled={releasingEscrowId === row.id}
+          onClick={() => {
+            setEscrowNoteTarget(row.id);
+            setEscrowAdminNote("");
+          }}
+          className="rounded bg-emerald-600 px-3 py-1.5 text-[10px] font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
+        >
+          {releasingEscrowId === row.id ? "Đang trả..." : "Duyệt trả ví"}
+        </button>
+      )
+    }
+  ];
+
   return (
     <div className="space-y-6">
       {/* Sub Menu tabs */}
@@ -446,6 +597,24 @@ export default function AdminTab({
           }`}
         >
           📰 Quản Lý Tin Tức
+        </button>
+
+        <button
+          onClick={() => setAdminTab("notifications")}
+          className={`pb-3 text-xs font-semibold px-3 cursor-pointer shrink-0 transition relative ${
+            adminTab === "notifications" ? "text-[#13519c] border-b-2 border-[#13519c]" : "text-slate-400 hover:text-slate-600"
+          }`}
+        >
+          Thông báo
+        </button>
+
+        <button
+          onClick={() => setAdminTab("escrow")}
+          className={`pb-3 text-xs font-semibold px-3 cursor-pointer shrink-0 transition relative ${
+            adminTab === "escrow" ? "text-[#13519c] border-b-2 border-[#13519c]" : "text-slate-400 hover:text-slate-600"
+          }`}
+        >
+          Giữ tiền
         </button>
 
         <button
@@ -598,7 +767,13 @@ export default function AdminTab({
               {pendingDocs.map((doc) => (
                 <div key={doc.id} className="p-3 border dark:border-slate-800 rounded-lg bg-slate-50/40 flex justify-between items-center">
                   <div>
-                    <h4 className="font-semibold text-slate-900 dark:text-slate-100">{doc.title}</h4>
+                    <h4
+                      onClick={() => setPreviewDoc({ title: doc.title, file_url: doc.file_url })}
+                      className="font-semibold text-[#13519c] dark:text-blue-400 hover:underline cursor-pointer flex items-center gap-1"
+                      title="Click để mở xem trước tài liệu"
+                    >
+                      {doc.title} 🔎
+                    </h4>
                     <p className="text-[10px] text-slate-400 mt-1">
                       Lớp: {doc.grade_tag} | Môn: {doc.subject_tag} | Loại: {doc.type_tag}
                     </p>
@@ -698,33 +873,61 @@ export default function AdminTab({
                         Minh chứng & CCCD 2 mặt đính kèm:
                       </span>
                       <div className="grid grid-cols-3 gap-2">
-                        {pt.documents.map((d: any, idx: number) => (
-                          <div
-                            key={idx}
-                            className="space-y-1 bg-white dark:bg-slate-900 p-1.5 rounded border dark:border-slate-800"
-                          >
-                            <span className="text-[8px] font-bold uppercase text-slate-400 block truncate text-left">
-                              {d.doc_type === "CCCD_FRONT"
-                                ? "🪪 CCCD Mặt Trước"
-                                : d.doc_type === "CCCD_BACK"
-                                ? "🪪 CCCD Mặt Sau"
-                                : "🎓 Bằng Cấp / Thẻ SV"}
-                            </span>
+                        {pt.documents.map((d: any, idx: number) => {
+                          const isImage = d.mime_type ? d.mime_type.startsWith("image/") : (d.url && /\.(png|jpe?g|webp|gif)$/i.test(d.url));
+                          const isDoc = d.original_name ? /\.(docx?)$/i.test(d.original_name) : (d.url && /\.(docx?)$/i.test(d.url));
+                          const fileUrl = d.url && d.url.startsWith("/") ? `http://localhost:5000${d.url}?token=${token}` : d.url;
+                          return (
                             <div
-                              onClick={() => setPreviewImageUrl(d.url && d.url.startsWith("/") ? `http://localhost:5000${d.url}?token=${token}` : d.url)}
-                              className="block relative group overflow-hidden rounded bg-slate-100 dark:bg-slate-950 cursor-pointer"
+                              key={idx}
+                              className="space-y-1 bg-white dark:bg-slate-900 p-1.5 rounded border dark:border-slate-800"
                             >
-                              <img
-                                src={d.url && d.url.startsWith("/") ? `http://localhost:5000${d.url}?token=${token}` : d.url}
-                                alt={d.doc_type}
-                                className="h-14 w-full object-cover rounded hover:scale-105 transition duration-200"
-                              />
-                              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-[7px] text-white font-bold">
-                                MỞ 🔎
+                              <div className="flex justify-between items-center gap-1 mb-0.5">
+                                <span className="text-[8px] font-bold uppercase text-slate-400 block truncate text-left">
+                                  {d.doc_type === "CCCD_FRONT"
+                                    ? "🪪 CCCD Mặt Trước"
+                                    : d.doc_type === "CCCD_BACK"
+                                    ? "🪪 CCCD Mặt Sau"
+                                    : "🎓 Bằng Cấp / Thẻ SV"}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteTutorDoc(d.id)}
+                                  className="text-[8px] text-red-500 hover:text-red-750 font-bold opacity-60 hover:opacity-100 transition cursor-pointer"
+                                  title="Xóa tài liệu này"
+                                >
+                                  Xóa ✕
+                                </button>
                               </div>
+                              {isImage ? (
+                                <div
+                                  onClick={() => setPreviewDoc({ title: d.original_name || "Tài liệu", file_url: fileUrl })}
+                                  className="block relative group overflow-hidden rounded bg-slate-100 dark:bg-slate-950 cursor-pointer"
+                                >
+                                  <img
+                                    src={fileUrl}
+                                    alt={d.doc_type}
+                                    className="h-14 w-full object-cover rounded hover:scale-105 transition duration-200"
+                                  />
+                                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-[7px] text-white font-bold">
+                                    MỞ 🔎
+                                  </div>
+                                </div>
+                              ) : (
+                                <div
+                                  onClick={() => setPreviewDoc({ title: d.original_name || "Tài liệu", file_url: fileUrl })}
+                                  className="h-14 w-full bg-blue-50 dark:bg-slate-850 rounded flex flex-col items-center justify-center text-[#13519c] dark:text-blue-400 p-1 border border-dashed border-blue-200 cursor-pointer hover:bg-blue-100/50 dark:hover:bg-slate-800 transition duration-150"
+                                  title="Click để mở xem trước tài liệu"
+                                >
+                                  <span className="text-base">📄</span>
+                                  <span className="text-[7px] font-bold truncate max-w-full text-center px-1" title={d.original_name}>
+                                    {d.original_name || "Tài liệu.docx"}
+                                  </span>
+                                </div>
+                              )}
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   )}
@@ -745,6 +948,110 @@ export default function AdminTab({
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Sub-tab: Notifications */}
+      {adminTab === "notifications" && (
+        <div className="bg-white dark:bg-[#111827] rounded-xl p-4 shadow-sm border border-slate-200/60 dark:border-slate-800/80 space-y-4 text-left">
+          <div>
+            <h3 className="font-semibold text-sm text-slate-900 dark:text-white">Gửi thông báo từ admin</h3>
+            <p className="text-xs text-slate-500 mt-1">Gửi thông báo tới toàn bộ hệ thống hoặc theo nhóm vai trò.</p>
+          </div>
+
+          <form onSubmit={handleSendAdminNotification} className="grid gap-3 max-w-2xl">
+            <div>
+              <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Nhóm nhận</label>
+              <select
+                value={adminNotificationForm.role}
+                onChange={(e) => setAdminNotificationForm({ ...adminNotificationForm, role: e.target.value })}
+                className="h-9 w-full rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 text-xs font-semibold focus:outline-none"
+              >
+                <option value="ALL">Tất cả người dùng</option>
+                <option value="STUDENT">Học sinh / phụ huynh</option>
+                <option value="TUTOR">Gia sư</option>
+                <option value="ADMIN">Quản trị viên</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Tiêu đề</label>
+              <input
+                value={adminNotificationForm.title}
+                onChange={(e) => setAdminNotificationForm({ ...adminNotificationForm, title: e.target.value })}
+                className="h-9 w-full rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 text-xs font-semibold focus:outline-none"
+                placeholder="Ví dụ: Cập nhật lịch bảo trì hệ thống"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Nội dung</label>
+              <textarea
+                value={adminNotificationForm.body}
+                onChange={(e) => setAdminNotificationForm({ ...adminNotificationForm, body: e.target.value })}
+                className="min-h-28 w-full rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 py-2 text-xs font-semibold focus:outline-none resize-y"
+                placeholder="Nhập nội dung thông báo gửi tới người dùng..."
+              />
+            </div>
+
+            <div>
+              <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Đường dẫn khi bấm</label>
+              <input
+                value={adminNotificationForm.linkUrl}
+                onChange={(e) => setAdminNotificationForm({ ...adminNotificationForm, linkUrl: e.target.value })}
+                className="h-9 w-full rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 text-xs font-semibold focus:outline-none"
+                placeholder="/?tab=news"
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={sendingAdminNotification}
+              className="h-10 rounded-lg bg-[#13519c] text-white text-xs font-bold hover:bg-blue-800 disabled:opacity-50"
+            >
+              {sendingAdminNotification ? "Đang gửi..." : "Gửi thông báo"}
+            </button>
+          </form>
+        </div>
+      )}
+
+      {/* Sub-tab: Escrow holding management */}
+      {adminTab === "escrow" && (
+        <div className="bg-white dark:bg-[#111827] rounded-xl p-4 shadow-sm border border-slate-200/60 dark:border-slate-800/80 space-y-4 text-left">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h3 className="font-semibold text-sm text-slate-900 dark:text-white">Quản lý tiền giam</h3>
+              <p className="text-xs text-slate-500 mt-1">Các khoản đã thanh toán đang giữ 3 ngày trước khi vào ví khả dụng của gia sư.</p>
+            </div>
+            <button
+              type="button"
+              onClick={fetchEscrowAppointments}
+              className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 dark:border-slate-800 dark:text-slate-300 dark:hover:bg-slate-900"
+            >
+              Tải lại
+            </button>
+          </div>
+
+          {loadingEscrow ? (
+            <div className="py-8 text-center text-xs font-semibold text-slate-400">Đang tải danh sách tiền giam...</div>
+          ) : escrowAppointments.length === 0 ? (
+            <div className="py-8 text-center text-xs text-slate-400">Không có khoản tiền nào đang bị giam.</div>
+          ) : (
+            <KntechDataTable
+              columns={escrowColumns}
+              data={escrowAppointments}
+              searchPlaceholder="Tìm theo mã lớp, gia sư, học viên..."
+            />
+          )}
+          {escrowToast && (
+            <div className={`rounded-lg border px-3 py-2 text-xs font-semibold ${
+              escrowToast.type === "success"
+                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                : "border-rose-200 bg-rose-50 text-rose-700"
+            }`}>
+              {escrowToast.message}
             </div>
           )}
         </div>
@@ -898,6 +1205,44 @@ export default function AdminTab({
               alt="Preview"
               className="max-w-full max-h-[85vh] object-contain rounded-xl"
             />
+          </div>
+        </div>
+      )}
+
+      {escrowNoteTarget && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-800 dark:bg-[#111827]">
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white">Duyệt trả tiền giam</h3>
+            <p className="mt-1 text-xs text-slate-500">
+              Khoản tiền sẽ được chuyển từ trạng thái giam sang ví khả dụng của gia sư ngay lập tức.
+            </p>
+            <label className="mt-4 block text-[10px] font-bold uppercase text-slate-400">Ghi chú admin</label>
+            <textarea
+              value={escrowAdminNote}
+              onChange={(e) => setEscrowAdminNote(e.target.value)}
+              className="mt-1 min-h-24 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs outline-none focus:border-[#13519c] dark:border-slate-800 dark:bg-slate-900"
+              placeholder="Có thể để trống..."
+            />
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setEscrowNoteTarget(null);
+                  setEscrowAdminNote("");
+                }}
+                className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 dark:border-slate-800 dark:text-slate-300"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                disabled={releasingEscrowId === escrowNoteTarget}
+                onClick={() => handleReleaseEscrow(escrowNoteTarget, escrowAdminNote.trim())}
+                className="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
+              >
+                {releasingEscrowId === escrowNoteTarget ? "Đang duyệt..." : "Duyệt trả ví"}
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -4,12 +4,14 @@ type DocDetailModalProps = {
   selectedDocument: any;
   setSelectedDocument: (doc: any) => void;
   formatVND: (val: any) => string;
+  setPreviewDoc: (doc: any) => void;
 };
 
 export default function DocDetailModal({
   selectedDocument,
   setSelectedDocument,
   formatVND,
+  setPreviewDoc,
 }: DocDetailModalProps) {
   if (!selectedDocument) return null;
 
@@ -96,14 +98,12 @@ export default function DocDetailModal({
           </button>
           <button
             onClick={() => {
-              alert(
-                `Mô phỏng tải tài liệu thành công: ${selectedDocument.title}\nTệp tin sẽ được lưu từ nguồn: ${selectedDocument.file_url}`
-              );
+              setPreviewDoc(selectedDocument);
               setSelectedDocument(null);
             }}
             className="bg-[#13519c] hover:bg-blue-800 text-white font-semibold text-xs px-4 py-2 rounded-lg cursor-pointer transition shadow"
           >
-            📥 Tải xuống PDF
+            👁️ Xem tài liệu (Preview)
           </button>
         </div>
       </div>

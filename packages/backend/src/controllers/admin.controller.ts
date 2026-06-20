@@ -4,7 +4,10 @@ import pool from "../config/db";
 import type { AuthedRequest } from "../middlewares/auth";
 import { walletReleaseHolding } from "../services/wallet.service";
 import fs from "fs";
+import path from "path";
 import { assertDocumentFileIsSafe } from "../utils/upload";
+import { createNotification, createNotifications } from "../services/notification.service";
+import { notifyZaloAdmins } from "../services/zaloAdmin.service";
 
 
 export async function listPendingTutors(_req: AuthedRequest, res: Response) {
@@ -13,7 +16,7 @@ export async function listPendingTutors(_req: AuthedRequest, res: Response) {
   );
   
   for (const t of rows) {
-    const [docs] = await pool.query("SELECT doc_type, url, status FROM tutor_documents WHERE tutor_user_id = ?", [t.user_id]);
+    const [docs] = await pool.query("SELECT id, doc_type, url, original_name, mime_type, status FROM tutor_documents WHERE tutor_user_id = ?", [t.user_id]);
     t.documents = docs;
   }
   
@@ -41,6 +44,19 @@ export async function decideTutor(req: AuthedRequest, res: Response) {
       [input.rejectReason ?? "Rejected", input.tutorUserId]
     );
   }
+  await createNotification({
+    recipientId: input.tutorUserId,
+    actorId: req.user?.id ?? null,
+    type: input.decision === "APPROVED" ? "PROFILE_APPROVED" : "PROFILE_REJECTED",
+    title: input.decision === "APPROVED" ? "Hồ sơ gia sư đã được duyệt" : "Hồ sơ gia sư bị từ chối",
+    body: input.decision === "APPROVED"
+      ? "Chúc mừng! Hồ sơ gia sư của bạn đã được admin phê duyệt."
+      : `Hồ sơ gia sư của bạn bị từ chối. Lý do: ${input.rejectReason ?? "Chưa có lý do cụ thể."}`,
+    linkUrl: "/?tab=profile",
+    entityType: "TUTOR_PROFILE",
+    entityId: input.tutorUserId,
+    metadata: { decision: input.decision, rejectReason: input.rejectReason ?? null },
+  });
   return res.json({ success: true });
 }
 
@@ -80,6 +96,20 @@ export async function decideWithdraw(req: AuthedRequest, res: Response) {
     // we would restore available here. MVP keeps it simple (no reservation) and just records decision.
   }
 
+  await createNotification({
+    recipientId: wr.user_id,
+    actorId: req.user?.id ?? null,
+    type: input.decision === "APPROVED" ? "WITHDRAW_APPROVED" : "WITHDRAW_REJECTED",
+    title: input.decision === "APPROVED" ? "Yêu cầu rút tiền đã được duyệt" : "Yêu cầu rút tiền bị từ chối",
+    body: input.decision === "APPROVED"
+      ? `Yêu cầu rút ${Number(wr.amount).toLocaleString("vi-VN")}đ của bạn đã được admin duyệt.`
+      : `Yêu cầu rút tiền bị từ chối. ${input.adminNote ?? ""}`.trim(),
+    linkUrl: "/?tab=wallet",
+    entityType: "WITHDRAW_REQUEST",
+    entityId: String(input.withdrawId),
+    metadata: { decision: input.decision, adminNote: input.adminNote ?? null, receiptUrl: input.receiptUrl ?? null },
+  });
+
   return res.json({ success: true });
 }
 
@@ -107,18 +137,18 @@ export async function resolveReport(req: AuthedRequest, res: Response) {
   // For MVP: RELEASE moves holding->available for tutor if appointment is HOLDING
   if (input.resolution === "RELEASE") {
     const [apptRows] = await pool.query(
-      "SELECT tutor_id, price_paid, payment_status FROM appointments WHERE id = ? LIMIT 1",
+      "SELECT tutor_id, price_paid, commission_amount, tutor_earning, payment_status FROM appointments WHERE id = ? LIMIT 1",
       [report.appointment_id]
     );
     const appt = Array.isArray(apptRows) ? (apptRows as any[])[0] : undefined;
     if (appt && appt.payment_status === "HOLDING") {
       await walletReleaseHolding({
         tutorId: appt.tutor_id,
-        amount: Number(appt.price_paid),
+        amount: getTutorEscrowAmount(appt),
         refType: "APPOINTMENT",
         refId: report.appointment_id,
       });
-      await pool.query("UPDATE appointments SET payment_status = 'RELEASED' WHERE id = ?", [
+      await pool.query("UPDATE appointments SET payment_status = 'RELEASED', escrow_released_at = NOW() WHERE id = ?", [
         report.appointment_id,
       ]);
     }
@@ -135,7 +165,136 @@ export async function resolveReport(req: AuthedRequest, res: Response) {
     input.reportId,
   ]);
 
+  await createNotifications([
+    {
+      recipientId: report.reporter_id,
+      actorId: req.user?.id ?? null,
+      type: "SYSTEM",
+      title: "Báo cáo của bạn đã được xử lý",
+      body: `Admin đã xử lý báo cáo với kết quả: ${input.resolution}.`,
+      linkUrl: "/?tab=bookings",
+      entityType: "REPORT",
+      entityId: String(input.reportId),
+      metadata: { resolution: input.resolution, adminNote: input.adminNote ?? null },
+    },
+    {
+      recipientId: report.target_id,
+      actorId: req.user?.id ?? null,
+      type: "SYSTEM",
+      title: "Một báo cáo liên quan đến bạn đã được xử lý",
+      body: `Admin đã xử lý báo cáo với kết quả: ${input.resolution}.`,
+      linkUrl: "/?tab=bookings",
+      entityType: "REPORT",
+      entityId: String(input.reportId),
+      metadata: { resolution: input.resolution, adminNote: input.adminNote ?? null },
+    },
+  ]);
+
   return res.json({ success: true });
+}
+
+function getTutorEscrowAmount(appt: any) {
+  const pricePaid = Number(appt.price_paid || 0);
+  const commissionAmount = Number(appt.commission_amount || 0);
+  const tutorEarning = Number(appt.tutor_earning);
+  if (Number.isFinite(tutorEarning) && tutorEarning > 0) {
+    return tutorEarning;
+  }
+  return Math.max(pricePaid - commissionAmount, 0);
+}
+
+export async function listEscrowAppointments(_req: AuthedRequest, res: Response): Promise<any> {
+  try {
+    const [rows]: any = await pool.query(`
+      SELECT a.id, a.student_id, a.tutor_id, a.start_time, a.end_time, a.price_paid,
+             a.payment_status, a.status, a.created_at, a.commission_percent_snapshot,
+             a.commission_amount, a.tutor_earning, a.escrow_release_date, a.escrow_released_at,
+             t.full_name as tutor_name, t.email as tutor_email,
+             s.full_name as student_name, s.email as student_email
+      FROM appointments a
+      JOIN users t ON t.id = a.tutor_id
+      JOIN users s ON s.id = a.student_id
+      WHERE a.payment_status = 'HOLDING'
+      ORDER BY a.escrow_release_date ASC, a.created_at DESC
+    `);
+    return res.json({ success: true, data: rows });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+}
+
+export async function releaseEscrowAppointment(req: AuthedRequest, res: Response): Promise<any> {
+  const schema = z.object({
+    appointmentId: z.string().min(1).max(36),
+    adminNote: z.string().max(2000).optional().nullable(),
+  });
+
+  const input = schema.parse({ ...req.body, appointmentId: req.params.appointmentId });
+  const connection = await pool.getConnection();
+
+  try {
+    await connection.beginTransaction();
+    const [rows]: any = await connection.query(
+      "SELECT * FROM appointments WHERE id = ? FOR UPDATE",
+      [input.appointmentId]
+    );
+    const appt = rows[0];
+    if (!appt) {
+      await connection.rollback();
+      return res.status(404).json({ success: false, message: "Appointment not found" });
+    }
+    if (appt.payment_status !== "HOLDING") {
+      await connection.rollback();
+      return res.status(400).json({ success: false, message: "Appointment is not in holding status" });
+    }
+
+    const releaseAmount = getTutorEscrowAmount(appt);
+    await walletReleaseHolding({
+      tutorId: appt.tutor_id,
+      amount: releaseAmount,
+      refType: "ESCROW",
+      refId: input.appointmentId,
+    }, connection);
+
+    await connection.query(
+      "UPDATE appointments SET payment_status = 'RELEASED', escrow_released_at = NOW() WHERE id = ?",
+      [input.appointmentId]
+    );
+
+    await connection.commit();
+
+    await createNotifications([
+      {
+        recipientId: appt.tutor_id,
+        actorId: req.user?.id ?? null,
+        type: "PAYMENT_RELEASED",
+        title: "Tiền lớp học đã vào ví khả dụng",
+        body: `Admin đã duyệt trả ${releaseAmount.toLocaleString("vi-VN")}đ từ khoản giam tiền.`,
+        linkUrl: "/?tab=wallet",
+        entityType: "APPOINTMENT",
+        entityId: input.appointmentId,
+        metadata: { amount: releaseAmount, adminNote: input.adminNote ?? null },
+      },
+      {
+        recipientId: appt.student_id,
+        actorId: req.user?.id ?? null,
+        type: "SYSTEM",
+        title: "Khoản thanh toán lớp học đã được tất toán",
+        body: "Admin đã duyệt trả tiền cho gia sư từ khoản giam tiền.",
+        linkUrl: "/?tab=bookings",
+        entityType: "APPOINTMENT",
+        entityId: input.appointmentId,
+        metadata: { amount: releaseAmount, adminNote: input.adminNote ?? null },
+      },
+    ]);
+
+    return res.json({ success: true, data: { appointmentId: input.appointmentId, releasedAmount: releaseAmount } });
+  } catch (error: any) {
+    await connection.rollback();
+    return res.status(500).json({ success: false, message: error.message });
+  } finally {
+    connection.release();
+  }
 }
 
 export async function listSystemLogs(req: AuthedRequest, res: Response): Promise<any> {
@@ -197,6 +356,20 @@ export async function updateUserAdmin(req: AuthedRequest, res: Response): Promis
         [fullName ?? null, email ?? null, normalizedUsername, phone ?? null, role ?? null, status ?? null, userId]
       );
     }
+
+    await createNotification({
+      recipientId: String(userId),
+      actorId: req.user?.id ?? null,
+      type: "ACCOUNT_UPDATED",
+      title: "Tài khoản của bạn vừa được cập nhật",
+      body: status === "BANNED"
+        ? "Tài khoản của bạn đã bị khóa bởi admin."
+        : "Admin vừa cập nhật thông tin tài khoản của bạn.",
+      linkUrl: "/?tab=profile",
+      entityType: "USER",
+      entityId: String(userId),
+      metadata: { role: role ?? null, status: status ?? null, passwordChanged: Boolean(password && password.trim() !== "") },
+    });
 
     return res.json({ success: true, message: "Cập nhật người dùng thành công!" });
   } catch (error: any) {
@@ -342,7 +515,20 @@ export async function deleteNews(req: AuthedRequest, res: Response): Promise<any
 export async function listDocuments(req: any, res: Response): Promise<any> {
   const { grade, type, subject, search } = req.query;
   try {
-    let sql = "SELECT * FROM documents WHERE is_approved = 'APPROVED'";
+    const requestedPage = Number.parseInt(String(req.query.page || "1"), 10);
+    const requestedPageSize = Number.parseInt(String(req.query.pageSize || "12"), 10);
+    const pageSize = Math.min(50, Math.max(6, Number.isFinite(requestedPageSize) ? requestedPageSize : 12));
+    const page = Math.max(1, Number.isFinite(requestedPage) ? requestedPage : 1);
+    const sort = String(req.query.sort || "newest");
+    const orderByMap: Record<string, string> = {
+      newest: "created_at DESC, id DESC",
+      oldest: "created_at ASC, id ASC",
+      downloads: "download_count DESC, created_at DESC, id DESC",
+      title: "title ASC, created_at DESC, id DESC",
+    };
+    const orderBy = orderByMap[sort] || orderByMap.newest;
+
+    let sql = "WHERE is_approved = 'APPROVED'";
     const params: any[] = [];
     
     if (grade && grade !== "Tất cả") {
@@ -358,16 +544,47 @@ export async function listDocuments(req: any, res: Response): Promise<any> {
       params.push(subject);
     }
     if (search) {
-      sql += " AND title LIKE ?";
-      params.push(`%${search}%`);
+      sql += " AND (title LIKE ? OR uploader_name LIKE ?)";
+      params.push(`%${search}%`, `%${search}%`);
     }
     
-    sql += " ORDER BY created_at DESC";
-    
-    const [rows] = await pool.query(sql, params);
-    return res.json({ success: true, data: rows });
+    const [countRows]: any = await pool.query(`SELECT COUNT(*) as total FROM documents ${sql}`, params);
+    const total = Number(countRows?.[0]?.total || 0);
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    const safePage = Math.min(page, totalPages);
+    const offset = (safePage - 1) * pageSize;
+
+    const [rows] = await pool.query(
+      `SELECT id, title, file_url, grade_tag, type_tag, subject_tag, uploader_id, uploader_name, is_approved, download_count, created_at
+       FROM documents
+       ${sql}
+       ORDER BY ${orderBy}
+       LIMIT ? OFFSET ?`,
+      [...params, pageSize, offset]
+    );
+    return res.json({
+      success: true,
+      data: rows,
+      meta: {
+        pagination: {
+          total,
+          page: safePage,
+          pageSize,
+          totalPages,
+        },
+      },
+    });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
+  }
+}
+
+export function decodeMultipartString(val: string | undefined | null): string {
+  if (!val) return "";
+  try {
+    return Buffer.from(val, "latin1").toString("utf8");
+  } catch (e) {
+    return val;
   }
 }
 
@@ -377,7 +594,10 @@ export async function uploadDocument(req: AuthedRequest, res: Response): Promise
     return res.status(400).json({ success: false, message: "Vui lòng chọn tệp tài liệu để tải lên." });
   }
 
-  const { title, gradeTag, typeTag, subjectTag } = req.body;
+  const title = decodeMultipartString(req.body.title);
+  const gradeTag = decodeMultipartString(req.body.gradeTag);
+  const typeTag = decodeMultipartString(req.body.typeTag);
+  const subjectTag = decodeMultipartString(req.body.subjectTag);
   const uploaderId = req.user!.id;
   
   let uploaderName = req.user!.email.split('@')[0];
@@ -433,6 +653,18 @@ export async function uploadDocument(req: AuthedRequest, res: Response): Promise
       "INSERT INTO documents (title, file_url, grade_tag, type_tag, subject_tag, uploader_id, uploader_name, is_approved) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
       [title, fileUrl, gradeTag, typeTag, subjectTag, uploaderId, uploaderName, isApproved]
     );
+    if (isApproved === "PENDING") {
+      await notifyZaloAdmins("DOCUMENT_PENDING", [
+        ["📄 Tài liệu", title],
+        ["👤 Người gửi", uploaderName],
+        ["📧 Email", req.user?.email],
+        ["🏷️ Môn", subjectTag],
+        ["🎓 Lớp", gradeTag],
+        ["📌 Loại", typeTag],
+        ["🆔 Document ID", result.insertId],
+        ["🧭 Admin", "Vào tab Admin > Duyệt tài liệu"],
+      ]);
+    }
     return res.json({
       success: true,
       message: role === "ADMIN" ? "Tài liệu đã được đăng lên ngay!" : "Tài liệu đã được tải lên và đang chờ Admin phê duyệt.",
@@ -455,9 +687,33 @@ export async function listPendingDocuments(req: AuthedRequest, res: Response): P
 
 export async function decideDocument(req: AuthedRequest, res: Response): Promise<any> {
   const { id } = req.params;
-  const { decision } = req.body;
+  const schema = z.object({
+    decision: z.enum(["APPROVED", "REJECTED"]),
+    rejectReason: z.string().max(2000).optional().nullable(),
+  });
+  const { decision, rejectReason } = schema.parse(req.body);
   try {
-    await pool.query("UPDATE documents SET is_approved = ? WHERE id = ?", [decision, id]);
+    const [rows]: any = await pool.query("SELECT uploader_id, title FROM documents WHERE id = ? LIMIT 1", [id]);
+    const doc = rows[0];
+    await pool.query(
+      "UPDATE documents SET is_approved = ?, reject_reason = ? WHERE id = ?",
+      [decision, decision === "REJECTED" ? (rejectReason ?? "Rejected") : null, id]
+    );
+    if (doc?.uploader_id) {
+      await createNotification({
+        recipientId: doc.uploader_id,
+        actorId: req.user?.id ?? null,
+        type: decision === "APPROVED" ? "DOCUMENT_APPROVED" : "DOCUMENT_REJECTED",
+        title: decision === "APPROVED" ? "Tài liệu đã được duyệt" : "Tài liệu bị từ chối",
+        body: decision === "APPROVED"
+          ? `Tài liệu "${doc.title}" đã được hiển thị công khai.`
+          : `Tài liệu "${doc.title}" bị từ chối bởi admin. Lý do: ${rejectReason ?? "Chưa có lý do cụ thể."}`,
+        linkUrl: "/?tab=documents",
+        entityType: "DOCUMENT",
+        entityId: String(id),
+        metadata: { decision, title: doc.title, rejectReason: rejectReason ?? null },
+      });
+    }
     return res.json({ success: true, message: "Đã duyệt tài liệu thành công!" });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
@@ -469,6 +725,52 @@ export async function deleteDocument(req: AuthedRequest, res: Response): Promise
   try {
     await pool.query("DELETE FROM documents WHERE id = ?", [id]);
     return res.json({ success: true, message: "Xóa tài liệu thành công!" });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+}
+
+export async function deleteDocumentSecure(req: AuthedRequest, res: Response): Promise<any> {
+  const { id } = req.params;
+  const userId = req.user!.id;
+  const userRole = req.user!.role;
+
+  try {
+    const [rows]: any = await pool.query("SELECT * FROM documents WHERE id = ?", [id]);
+    if (!rows || rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy tài liệu." });
+    }
+
+    const doc = rows[0];
+    if (userRole !== "ADMIN" && doc.uploader_id !== userId) {
+      return res.status(403).json({ success: false, message: "Bạn không có quyền xóa tài liệu này." });
+    }
+
+    // Try to delete physical file
+    if (doc.file_url) {
+      try {
+        const filename = path.basename(doc.file_url);
+        const filePath = path.join(process.cwd(), "uploads", "docs", filename);
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+      } catch (err) {
+        console.error("Failed to delete physical file from disk:", err);
+      }
+    }
+
+    await pool.query("DELETE FROM documents WHERE id = ?", [id]);
+    return res.json({ success: true, message: "Xóa tài liệu thành công!" });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+}
+
+export async function deleteTutorDocument(req: AuthedRequest, res: Response): Promise<any> {
+  const { id } = req.params;
+  try {
+    await pool.query("DELETE FROM tutor_documents WHERE id = ?", [id]);
+    return res.json({ success: true, message: "Xóa tài liệu minh chứng thành công!" });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -489,9 +791,10 @@ export async function decideProposedCommission(req: AuthedRequest, res: Response
   const schema = z.object({
     tutorUserId: z.string().min(1).max(36),
     decision: z.enum(["APPROVED", "REJECTED"]),
+    rejectReason: z.string().max(2000).optional().nullable(),
   });
   try {
-    const { tutorUserId, decision } = schema.parse(req.body);
+    const { tutorUserId, decision, rejectReason } = schema.parse(req.body);
     if (decision === "APPROVED") {
       const [rows]: any = await pool.query("SELECT proposed_commission_percent FROM tutor_profiles WHERE user_id = ?", [tutorUserId]);
       const newPercent = rows[0]?.proposed_commission_percent;
@@ -509,6 +812,19 @@ export async function decideProposedCommission(req: AuthedRequest, res: Response
         [tutorUserId]
       );
     }
+    await createNotification({
+      recipientId: tutorUserId,
+      actorId: req.user?.id ?? null,
+      type: decision === "APPROVED" ? "COMMISSION_APPROVED" : "COMMISSION_REJECTED",
+      title: decision === "APPROVED" ? "Đề xuất chiết khấu đã được duyệt" : "Đề xuất chiết khấu bị từ chối",
+      body: decision === "APPROVED"
+        ? "Admin đã duyệt đề xuất điều chỉnh phần trăm chiết khấu của bạn."
+        : `Admin đã từ chối đề xuất điều chỉnh phần trăm chiết khấu của bạn. Lý do: ${rejectReason ?? "Chưa có lý do cụ thể."}`,
+      linkUrl: "/?tab=profile",
+      entityType: "TUTOR_PROFILE",
+      entityId: tutorUserId,
+      metadata: { decision, rejectReason: rejectReason ?? null },
+    });
     return res.json({ success: true, message: "Đã xử lý đề xuất điều chỉnh phần trăm chiết khấu." });
   } catch (error: any) {
     return res.status(400).json({ success: false, message: error.message });
@@ -533,8 +849,9 @@ export async function getDashboardDetails(req: AuthedRequest, res: Response): Pr
 
     const [appointments]: any = await pool.query(`
       SELECT a.id, a.start_time, a.end_time, a.price_paid, a.status, a.payment_status, a.created_at,
+             a.commission_percent_snapshot, a.commission_amount, a.tutor_earning, a.escrow_release_date, a.escrow_released_at,
              t.full_name as tutor_name, s.full_name as student_name,
-             tp.commission_percent
+             COALESCE(a.commission_percent_snapshot, tp.commission_percent) as commission_percent
       FROM appointments a
       JOIN users t ON t.id = a.tutor_id
       JOIN users s ON s.id = a.student_id
@@ -543,10 +860,11 @@ export async function getDashboardDetails(req: AuthedRequest, res: Response): Pr
     `);
 
     const [payments]: any = await pool.query(`
-      SELECT a.id, a.price_paid, a.payment_status, a.created_at,
+      SELECT a.id, a.price_paid, a.payment_status, a.created_at, a.escrow_release_date, a.escrow_released_at,
              t.full_name as tutor_name, s.full_name as student_name,
-             tp.commission_percent,
-             (a.price_paid * tp.commission_percent / 100.0) as commission_amount
+             COALESCE(a.commission_percent_snapshot, tp.commission_percent) as commission_percent,
+             COALESCE(a.commission_amount, (a.price_paid * tp.commission_percent / 100.0)) as commission_amount,
+             COALESCE(a.tutor_earning, (a.price_paid - COALESCE(a.commission_amount, (a.price_paid * tp.commission_percent / 100.0)))) as tutor_earning
       FROM appointments a
       JOIN users t ON t.id = a.tutor_id
       JOIN users s ON s.id = a.student_id

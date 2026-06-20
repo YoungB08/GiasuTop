@@ -12,6 +12,7 @@ type TutorDetailModalProps = {
   setSelectedTutor: (tutor: any) => void;
   openAuth: (tab: "login" | "register", role?: any) => void;
   formatVND: (val: any) => string;
+  setPreviewDoc: (doc: any) => void;
 };
 
 export default function TutorDetailModal({
@@ -25,6 +26,7 @@ export default function TutorDetailModal({
   setSelectedTutor,
   openAuth,
   formatVND,
+  setPreviewDoc,
 }: TutorDetailModalProps) {
   if (!viewingTutor) return null;
 
@@ -41,9 +43,11 @@ export default function TutorDetailModal({
             <div>
               <h3 className="text-sm font-bold text-slate-955 dark:text-white flex items-center gap-1.5">
                 {viewingTutor.full_name}
-                <span className="text-[9px] bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-350 font-bold px-1.5 py-0.2 rounded-full border border-emerald-200/30">
-                  ✓ Đã xác minh
-                </span>
+                {viewingTutor.is_verified === "APPROVED" && (
+                  <span className="text-[9px] bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-350 font-bold px-1.5 py-0.2 rounded-full border border-emerald-200/30">
+                    ✓ Đã xác minh
+                  </span>
+                )}
               </h3>
               <p className="text-[10px] text-slate-400 mt-0.5">
                 {viewingTutor.school} • {viewingTutor.major}
@@ -117,11 +121,9 @@ export default function TutorDetailModal({
                         {doc.original_name}
                       </span>
                       {isImage ? (
-                        <a
-                          href={fileUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="block relative group overflow-hidden rounded bg-slate-100 dark:bg-slate-950"
+                        <div
+                          onClick={() => setPreviewDoc({ title: doc.original_name, file_url: fileUrl })}
+                          className="block relative group overflow-hidden rounded bg-slate-100 dark:bg-slate-950 cursor-pointer"
                         >
                           <img
                             src={fileUrl}
@@ -131,19 +133,17 @@ export default function TutorDetailModal({
                           <div className="absolute inset-0 bg-black/45 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-[8px] text-white font-bold">
                             XEM 🔎
                           </div>
-                        </a>
+                        </div>
                       ) : (
-                        <a
-                          href={fileUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="h-20 rounded bg-blue-50 dark:bg-slate-800 flex flex-col items-center justify-center border border-dashed text-blue-600 dark:text-blue-400 hover:bg-blue-100 transition text-[10px] font-bold gap-1 text-center px-1"
+                        <div
+                          onClick={() => setPreviewDoc({ title: doc.original_name, file_url: fileUrl })}
+                          className="h-20 rounded bg-blue-50 dark:bg-slate-800 flex flex-col items-center justify-center border border-dashed text-blue-600 dark:text-blue-400 hover:bg-blue-100 transition text-[10px] font-bold gap-1 text-center px-1 cursor-pointer"
                         >
                           <span>📄 {doc.original_name.split(".").pop()?.toUpperCase()} File</span>
                           <span className="text-[8px] font-semibold text-slate-455 dark:text-slate-500">
                             Click để mở ↗
                           </span>
-                        </a>
+                        </div>
                       )}
                     </div>
                   );

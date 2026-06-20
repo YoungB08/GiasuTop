@@ -4,6 +4,7 @@ import { z } from "zod";
 import { v4 as uuidv4 } from "uuid";
 import pool from "../config/db";
 import { signAccessToken } from "../utils/jwt";
+import { notifyZaloAdmins } from "../services/zaloAdmin.service";
 
 const RegisterSchema = z.object({
   fullName: z.string().min(2).max(120),
@@ -55,6 +56,14 @@ export async function register(req: Request, res: Response) {
     "INSERT INTO users (id, full_name, username, email, password_hash, role) VALUES (?, ?, ?, ?, ?, ?)",
     [id, input.fullName.trim(), username, email, passwordHash, input.role]
   );
+
+  await notifyZaloAdmins("NEW_USER", [
+    ["👤 Tên", input.fullName.trim()],
+    ["📧 Email", email],
+    ["🔑 Username", username],
+    ["🎭 Vai trò", input.role === "TUTOR" ? "Gia sư" : "Học viên/Phụ huynh"],
+    ["🆔 User ID", id],
+  ]);
 
   const token = signAccessToken({ sub: id, email, role: input.role });
   return res.status(201).json({

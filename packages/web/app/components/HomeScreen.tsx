@@ -26,9 +26,10 @@ import AdminEditUserModal from "./modals/AdminEditUserModal";
 import TutorDetailModal from "./modals/TutorDetailModal";
 import DocDetailModal from "./modals/DocDetailModal";
 import TutorProfileModal from "./modals/TutorProfileModal";
+import DocumentPreviewModal from "./modals/DocumentPreviewModal";
 import NewsModal from "./modals/NewsModal";
 
-type TabKey = "home" | "courses" | "my_courses" | "documents" | "news" | "bookings" | "wallet" | "profile" | "admin";
+type TabKey = "home" | "courses" | "my_courses" | "documents" | "news" | "bookings" | "wallet" | "profile" | "notifications" | "admin";
 
 type Tutor = {
   user_id: string;
@@ -151,6 +152,19 @@ type CommunityPost = {
   comments: { author: string; text: string }[];
 };
 
+type NotificationItem = {
+  id: number;
+  type: string;
+  title: string;
+  body: string;
+  link_url: string | null;
+  entity_type: string | null;
+  entity_id: string | null;
+  metadata?: Record<string, any> | null;
+  is_read: boolean;
+  created_at: string;
+};
+
 // ===== MOCK DATA (fallback khi API rỗng) =====
 const MOCK_TUTORS: Tutor[] = [
   { user_id: "m1", full_name: "Nguyễn Minh Khoa", email: "khoa@gmail.com", avatar_url: null, bio: "Sinh viên năm 4 ĐH Bách Khoa, 3 năm kinh nghiệm dạy kèm Toán và Lý. Phương pháp từ cơ bản đến nâng cao, kết quả thực tế.", school: "ĐH Bách Khoa HN", major: "Kỹ thuật Điện", year_of_study: "Sinh viên năm 4", hourly_rate: "180000", subjects_to_teach: ["Toán", "Lý"] },
@@ -267,6 +281,7 @@ export default function HomeScreen() {
     role: string;
     phone?: string;
     avatar_url?: string;
+    avatarUrl?: string;
     bio?: string;
     address?: string;
     dob?: string;
@@ -344,6 +359,20 @@ export default function HomeScreen() {
     setCustomAlertMessage(message);
     setCustomAlertImg(imgUrl);
     setCustomAlertOpen(true);
+  };
+
+  const walletEntryTypeLabel = (entryType: string) => {
+    const labels: Record<string, string> = {
+      TOPUP: "Nạp tiền vào ví",
+      BOOKING_PAYMENT: "Thanh toán học phí",
+      HOLD: "Giam tiền lớp học",
+      RELEASE: "Trả tiền vào ví khả dụng",
+      REFUND: "Hoàn tiền",
+      WITHDRAW_REQUEST: "Yêu cầu rút tiền",
+      WITHDRAW_APPROVE: "Rút tiền đã duyệt",
+      WITHDRAW_REJECT: "Rút tiền bị từ chối",
+    };
+    return labels[entryType] || entryType;
   };
 
   const [tutorProfileForm, setTutorProfileForm] = useState({
@@ -462,7 +491,9 @@ export default function HomeScreen() {
 
   // App navigation
   const [activeTab, setActiveTab] = useState<TabKey>("home");
+  const [previousTab, setPreviousTab] = useState<TabKey>("home");
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [previewDoc, setPreviewDoc] = useState<{ title: string; file_url: string } | null>(null);
   const [tutorProfileToView, setTutorProfileToView] = useState<Tutor | null>(null);
 
   // Core Data States
@@ -496,6 +527,11 @@ export default function HomeScreen() {
   const [selectedDocGrade, setSelectedDocGrade] = useState("Tất cả");
   const [selectedDocSubject, setSelectedDocSubject] = useState("Tất cả");
   const [selectedDocType, setSelectedDocType] = useState("Tất cả");
+  const [docSort, setDocSort] = useState<"newest" | "oldest" | "downloads" | "title">("newest");
+  const [docPage, setDocPage] = useState(1);
+  const [docPageSize, setDocPageSize] = useState(12);
+  const [docTotal, setDocTotal] = useState(0);
+  const [loadingDocuments, setLoadingDocuments] = useState(false);
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [docUploadForm, setDocUploadForm] = useState({
     title: "",
@@ -524,6 +560,14 @@ export default function HomeScreen() {
   const [paymentDetails, setPaymentDetails] = useState<PaymentDetails | null>(null);
   const [generatingQr, setGeneratingQr] = useState(false);
   const [paymentComplete, setPaymentComplete] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState<{
+    title: string;
+    message: string;
+    confirmText?: string;
+    cancelText?: string;
+    tone?: "primary" | "danger";
+    onConfirm: () => void | Promise<void>;
+  } | null>(null);
 
   // Classroom Simulation States
   const [activeClassroom, setActiveClassroom] = useState<Appointment | null>(null);
@@ -536,6 +580,10 @@ export default function HomeScreen() {
   const [showSupportWidget, setShowSupportWidget] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const [notificationMenuOpen, setNotificationMenuOpen] = useState(false);
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | "unsupported">("default");
 
   // Canvas Drawing references
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -545,7 +593,7 @@ export default function HomeScreen() {
   const completeAvatarInputRef = useRef<HTMLInputElement>(null);
 
   // Admin Dashboard Section States
-  const [adminTab, setAdminTab] = useState<"dashboard" | "subjects" | "tutors" | "monitor" | "users" | "pending_docs" | "news_crud">("dashboard");
+  const [adminTab, setAdminTab] = useState<"dashboard" | "subjects" | "tutors" | "monitor" | "users" | "pending_docs" | "news_crud" | "notifications" | "escrow">("dashboard");
 
   // Admin -> Subject management states
   const [subjectNameInput, setSubjectNameInput] = useState("");
@@ -591,6 +639,14 @@ export default function HomeScreen() {
     thumbnailUrl: "",
     category: "Toán",
   });
+
+  const [adminNotificationForm, setAdminNotificationForm] = useState({
+    title: "",
+    body: "",
+    linkUrl: "/",
+    role: "ALL" as "ALL" | "STUDENT" | "TUTOR" | "ADMIN",
+  });
+  const [sendingAdminNotification, setSendingAdminNotification] = useState(false);
 
   // Countdown timer for Exam (Screenshot 1 right sidebar look)
   const [countdownText, setCountdownText] = useState("Còn 15 ngày 12 giờ 34 phút");
@@ -664,15 +720,30 @@ export default function HomeScreen() {
   };
 
   const fetchDocuments = async () => {
+    setLoadingDocuments(true);
     try {
-      let url = `http://localhost:5000/api/documents?grade=${selectedDocGrade}&subject=${selectedDocSubject}&type=${selectedDocType}&search=${docSearch}`;
-      const res = await fetch(url);
+      const params = new URLSearchParams({
+        grade: selectedDocGrade,
+        subject: selectedDocSubject,
+        type: selectedDocType,
+        search: docSearch.trim(),
+        sort: docSort,
+        page: String(docPage),
+        pageSize: String(docPageSize),
+      });
+      const res = await fetch(`http://localhost:5000/api/documents?${params.toString()}`);
       const json = await res.json();
       if (json.success) {
         setDocuments(json.data);
+        setDocTotal(Number(json.meta?.pagination?.total || json.data.length || 0));
+        if (json.meta?.pagination?.page && json.meta.pagination.page !== docPage) {
+          setDocPage(json.meta.pagination.page);
+        }
       }
     } catch (e) {
       console.error("Lỗi tải tài liệu:", e);
+    } finally {
+      setLoadingDocuments(false);
     }
   };
 
@@ -741,8 +812,13 @@ export default function HomeScreen() {
   }, []);
 
   useEffect(() => {
-    fetchDocuments();
-  }, [selectedDocGrade, selectedDocSubject, selectedDocType, docSearch]);
+    setDocPage(1);
+  }, [selectedDocGrade, selectedDocSubject, selectedDocType, docSearch, docSort, docPageSize]);
+
+  useEffect(() => {
+    const timer = setTimeout(fetchDocuments, 250);
+    return () => clearTimeout(timer);
+  }, [selectedDocGrade, selectedDocSubject, selectedDocType, docSearch, docSort, docPage, docPageSize]);
 
   // Load auth state from localStorage on mount
   useEffect(() => {
@@ -753,6 +829,151 @@ export default function HomeScreen() {
       setUser(JSON.parse(savedUser));
     }
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setNotificationPermission("Notification" in window ? Notification.permission : "unsupported");
+  }, []);
+
+  const fetchNotifications = async () => {
+    if (!token) return;
+    try {
+      const res = await fetch("http://localhost:5000/api/notifications?limit=80", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const json = await res.json();
+      if (json.success) {
+        setNotifications(json.data || []);
+        setUnreadNotifications(Number(json.unreadCount || 0));
+      }
+    } catch (e) {
+      console.error("Lỗi tải thông báo:", e);
+    }
+  };
+
+  const requestBrowserNotificationPermission = async () => {
+    if (typeof window === "undefined" || !("Notification" in window)) {
+      setNotificationPermission("unsupported");
+      return;
+    }
+    const permission = await Notification.requestPermission();
+    setNotificationPermission(permission);
+  };
+
+  const showBrowserNotification = (notification: NotificationItem) => {
+    if (typeof window === "undefined" || !("Notification" in window)) return;
+    if (Notification.permission !== "granted") return;
+    const browserNotification = new Notification(notification.title, {
+      body: notification.body,
+      icon: "https://api.dicebear.com/7.x/identicon/png?seed=KNTech",
+      badge: "https://api.dicebear.com/7.x/identicon/png?seed=KNTech&width=96&height=96",
+      data: { url: notification.link_url || "/" },
+    });
+    browserNotification.onclick = () => {
+      window.focus();
+      handleNotificationOpen(notification);
+      browserNotification.close();
+    };
+  };
+
+  const markNotificationRead = async (notificationId: number) => {
+    if (!token) return;
+    try {
+      const res = await fetch(`http://localhost:5000/api/notifications/${notificationId}/read`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const json = await res.json();
+      if (json.success) {
+        setNotifications((items) => items.map((item) => item.id === notificationId ? { ...item, is_read: true } : item));
+        setUnreadNotifications(Number(json.unreadCount || 0));
+      }
+    } catch (e) {
+      console.error("Lỗi đánh dấu thông báo:", e);
+    }
+  };
+
+  const markAllNotificationsReadClient = async () => {
+    if (!token) return;
+    try {
+      const res = await fetch("http://localhost:5000/api/notifications/read-all", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const json = await res.json();
+      if (json.success) {
+        setNotifications((items) => items.map((item) => ({ ...item, is_read: true })));
+        setUnreadNotifications(0);
+      }
+    } catch (e) {
+      console.error("Lỗi đọc tất cả thông báo:", e);
+    }
+  };
+
+  const handleNotificationOpen = (notification: NotificationItem) => {
+    if (!notification.is_read) markNotificationRead(notification.id);
+    setNotificationMenuOpen(false);
+    if (notification.link_url?.includes("community")) {
+      setHomeSubTab("community");
+      setActiveTab("home");
+      return;
+    }
+    if (notification.link_url?.includes("bookings")) {
+      setActiveTab("bookings");
+      return;
+    }
+    if (notification.link_url?.includes("wallet")) {
+      setActiveTab("wallet");
+      return;
+    }
+    if (notification.link_url?.includes("documents")) {
+      setActiveTab("documents");
+      return;
+    }
+    if (notification.link_url?.includes("admin")) {
+      setActiveTab("admin");
+      if (notification.link_url.includes("tutors")) setAdminTab("tutors");
+      else if (notification.link_url.includes("withdrawals")) setAdminTab("monitor");
+      return;
+    }
+    if (notification.link_url?.includes("profile")) {
+      setActiveTab("profile");
+      return;
+    }
+    setActiveTab("notifications");
+  };
+
+  useEffect(() => {
+    if (!token) {
+      setNotifications([]);
+      setUnreadNotifications(0);
+      return;
+    }
+
+    fetchNotifications();
+    const stream = new EventSource(`http://localhost:5000/api/notifications/stream?token=${encodeURIComponent(token)}`);
+    stream.addEventListener("notification", (event) => {
+      try {
+        const notification = JSON.parse((event as MessageEvent).data) as NotificationItem;
+        setNotifications((items) => [notification, ...items.filter((item) => item.id !== notification.id)].slice(0, 80));
+        setUnreadNotifications((count) => count + 1);
+        setToastMessage(notification.title);
+        setTimeout(() => setToastMessage(null), 3500);
+        showBrowserNotification(notification);
+      } catch (e) {
+        console.error("Lỗi xử lý thông báo realtime:", e);
+      }
+    });
+    stream.onerror = () => {
+      stream.close();
+    };
+
+    const interval = setInterval(fetchNotifications, 60_000);
+    return () => {
+      stream.close();
+      clearInterval(interval);
+    };
+  }, [token]);
 
   // Fetch Tutors
   const fetchTutors = async () => {
@@ -772,6 +993,31 @@ export default function HomeScreen() {
 
   useEffect(() => {
     fetchTutors();
+  }, []);
+
+  useEffect(() => {
+    const handlePaymentCompleted = (event: Event) => {
+      const detail = (event as CustomEvent).detail || {};
+      if (detail.appointmentId) {
+        fetchUserData();
+        showKntechAlert(
+          "success",
+          "Thanh toán đã được ghi nhận",
+          "Lớp học đã được xác nhận. Tiền gia sư sẽ bị giam 3 ngày và chỉ được trả nếu không có khiếu nại."
+        );
+      }
+    };
+    const handlePaymentStorage = (event: StorageEvent) => {
+      if (event.key === "kntech-payment-completed" && event.newValue) {
+        handlePaymentCompleted(new CustomEvent("kntech-payment-completed", { detail: JSON.parse(event.newValue) }));
+      }
+    };
+    window.addEventListener("kntech-payment-completed", handlePaymentCompleted as EventListener);
+    window.addEventListener("storage", handlePaymentStorage);
+    return () => {
+      window.removeEventListener("kntech-payment-completed", handlePaymentCompleted as EventListener);
+      window.removeEventListener("storage", handlePaymentStorage);
+    };
   }, []);
 
   const logClientActivity = async (action: string, details: string) => {
@@ -809,6 +1055,8 @@ export default function HomeScreen() {
 
   const handleDecideCommission = async (tutorUserId: string, status: "APPROVED" | "REJECTED") => {
     if (!token) return;
+    const rejectReason = status === "REJECTED" ? askRejectReason("đề xuất chiết khấu") : null;
+    if (status === "REJECTED" && !rejectReason) return;
     try {
       const res = await fetch("http://localhost:5000/api/admin/commissions/decide", {
         method: "POST",
@@ -816,7 +1064,7 @@ export default function HomeScreen() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ tutorUserId, decision: status }),
+        body: JSON.stringify({ tutorUserId, decision: status, rejectReason }),
       });
       const json = await res.json();
       if (json.success) {
@@ -829,6 +1077,47 @@ export default function HomeScreen() {
       }
     } catch (e) {
       showKntechAlert("error", "Lỗi kết nối", "Lỗi kết nối đến máy chủ.");
+    }
+  };
+
+  function askRejectReason(targetLabel: string) {
+    const reason = window.prompt(`Nhập lý do từ chối ${targetLabel}:`);
+    if (reason === null) return null;
+    const trimmed = reason.trim();
+    if (!trimmed) {
+      showKntechAlert("warning", "Thiếu lý do", "Vui lòng nhập lý do từ chối để gửi thông báo cho người dùng.");
+      return null;
+    }
+    return trimmed;
+  }
+
+  const handleSendAdminNotification = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!token || !adminNotificationForm.title.trim() || !adminNotificationForm.body.trim()) {
+      showKntechAlert("warning", "Thiếu nội dung", "Vui lòng nhập tiêu đề và nội dung thông báo.");
+      return;
+    }
+    setSendingAdminNotification(true);
+    try {
+      const res = await fetch("http://localhost:5000/api/admin/notifications/send", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(adminNotificationForm),
+      });
+      const json = await res.json();
+      if (json.success) {
+        showKntechAlert("success", "Đã gửi thông báo", json.message || "Thông báo đã được gửi tới người dùng.");
+        setAdminNotificationForm({ title: "", body: "", linkUrl: "/", role: "ALL" });
+      } else {
+        showKntechAlert("error", "Lỗi gửi thông báo", formatBackendError(json));
+      }
+    } catch (e) {
+      showKntechAlert("error", "Lỗi kết nối", "Không thể gửi thông báo tới máy chủ.");
+    } finally {
+      setSendingAdminNotification(false);
     }
   };
 
@@ -1333,6 +1622,11 @@ export default function HomeScreen() {
       if (json.success) {
         setPaymentComplete(true);
         fetchUserData();
+        showKntechAlert(
+          "success",
+          "Thanh toán đã được ghi nhận",
+          "Lớp học đã được xác nhận. Tiền gia sư sẽ bị giam 3 ngày và chỉ được trả nếu không có khiếu nại."
+        );
         setToastMessage("💳 Ghi nhận đóng học phí thành công!");
         setTimeout(() => {
           setPayingAppt(null);
@@ -1340,11 +1634,64 @@ export default function HomeScreen() {
           setToastMessage(null);
         }, 2000);
       } else {
-        alert(json.message);
+        showKntechAlert("error", "Lỗi giao dịch", json.message || "Không thể ghi nhận thanh toán.");
       }
     } catch (e) {
       console.error("Lỗi giả lập thanh toán:", e);
+      showKntechAlert("error", "Lỗi kết nối", "Không thể ghi nhận thanh toán.");
     }
+  };
+
+  const handleWalletPayAppointment = async (appt: Appointment) => {
+    const amount = Number(appt.price_paid);
+    if (Number(wallet.available_balance || 0) < amount) {
+      showKntechAlert(
+        "warning",
+        "Số dư không đủ",
+        `Học phí yêu cầu ${formatVND(appt.price_paid)} nhưng ví nội bộ của bác chỉ còn ${formatVND(wallet.available_balance)}. Đang chuyển hướng sang ví nội bộ để nạp thêm...`
+      );
+      setTimeout(() => {
+        setTopupAmountInput(String(Math.max(amount - Number(wallet.available_balance || 0), 0)));
+        setActiveTab("wallet");
+      }, 2000);
+      return;
+    }
+
+    setConfirmDialog({
+      title: "Xác nhận thanh toán ví",
+      message: `Thanh toán ${formatVND(appt.price_paid)} từ ví nội bộ?\n\nSau khi thanh toán, lớp học sẽ được xác nhận. Tiền gia sư sẽ bị giam 3 ngày và chỉ được trả nếu không có khiếu nại.`,
+      confirmText: "Thanh toán",
+      cancelText: "Hủy",
+      onConfirm: async () => {
+        try {
+          const res = await fetch("http://localhost:5000/api/payments/wallet-pay", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ appointmentId: appt.id }),
+          });
+          const json = await res.json();
+          if (json.success) {
+            showKntechAlert(
+              "success",
+              "Thanh toán thành công",
+              json.message || "Lớp học đã được xác nhận. Tiền gia sư được giam 3 ngày nếu không có khiếu nại."
+            );
+            logClientActivity("WALLET_PAY_APPOINTMENT", `Thanh toán học phí lớp ${appt.id} bằng ví nội bộ`);
+            setPayingAppt(null);
+            setPaymentDetails(null);
+            setPaymentComplete(false);
+            fetchUserData();
+          } else {
+            showKntechAlert("error", "Lỗi giao dịch", json.message || "Không thể thanh toán bằng ví.");
+          }
+        } catch (e) {
+          showKntechAlert("error", "Lỗi kết nối", "Không thể thanh toán bằng ví.");
+        }
+      },
+    });
   };
 
   // Virtual Classroom logic
@@ -1446,6 +1793,10 @@ export default function HomeScreen() {
     if (!ctx) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
   };
+
+  const docTotalPages = Math.max(1, Math.ceil(docTotal / docPageSize));
+  const docRangeStart = docTotal === 0 ? 0 : (docPage - 1) * docPageSize + 1;
+  const docRangeEnd = Math.min(docTotal, docPage * docPageSize);
 
   // Format currency
   const formatVND = (value: number | string) => {
@@ -1679,6 +2030,8 @@ export default function HomeScreen() {
   };
 
   const handleDecideDocument = async (id: number, decision: "APPROVED" | "REJECTED") => {
+    const rejectReason = decision === "REJECTED" ? askRejectReason("tài liệu") : null;
+    if (decision === "REJECTED" && !rejectReason) return;
     try {
       const res = await fetch(`http://localhost:5000/api/admin/documents/${id}/decide`, {
         method: "POST",
@@ -1686,7 +2039,7 @@ export default function HomeScreen() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`
         },
-        body: JSON.stringify({ decision })
+        body: JSON.stringify({ decision, rejectReason })
       });
       const json = await res.json();
       if (json.success) {
@@ -1707,7 +2060,7 @@ export default function HomeScreen() {
   const handleDeleteDocument = async (id: number) => {
     if (!confirm("Bác có muốn xóa tài liệu này?")) return;
     try {
-      const res = await fetch(`http://localhost:5000/api/admin/documents/${id}`, {
+      const res = await fetch(`http://localhost:5000/api/documents/${id}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -2401,6 +2754,79 @@ export default function HomeScreen() {
         <div className="flex items-center gap-3 flex-1 justify-end">
           {token && user ? (
             <div className="flex items-center gap-2">
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setNotificationMenuOpen((open) => !open)}
+                  className="relative h-8 w-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition"
+                  title="Thông báo"
+                >
+                  <IconBell className="h-4.5 w-4.5" />
+                  {unreadNotifications > 0 && (
+                    <span className="absolute -right-1 -top-1 min-w-4 h-4 px-1 rounded-full bg-rose-500 text-white text-[9px] font-black flex items-center justify-center border border-[#13519c]">
+                      {unreadNotifications > 99 ? "99+" : unreadNotifications}
+                    </span>
+                  )}
+                </button>
+
+                {notificationMenuOpen && (
+                  <div className="absolute right-0 top-11 w-80 max-w-[calc(100vw-1rem)] bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl overflow-hidden z-50 text-slate-800 dark:text-slate-100">
+                    <div className="p-3 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                      <div>
+                        <div className="text-sm font-bold">Thông báo</div>
+                        <div className="text-[10px] text-slate-400">{unreadNotifications} chưa đọc</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={markAllNotificationsReadClient}
+                        className="text-[10px] font-bold text-blue-600 hover:underline"
+                      >
+                        Đọc hết
+                      </button>
+                    </div>
+                    <div className="max-h-96 overflow-y-auto">
+                      {notifications.length === 0 ? (
+                        <div className="p-5 text-center text-xs text-slate-400">Chưa có thông báo.</div>
+                      ) : (
+                        notifications.slice(0, 8).map((notification) => (
+                          <button
+                            key={notification.id}
+                            type="button"
+                            onClick={() => handleNotificationOpen(notification)}
+                            className={`w-full text-left p-3 flex gap-2 hover:bg-slate-50 dark:hover:bg-slate-900 transition ${notification.is_read ? "" : "bg-blue-50/70 dark:bg-blue-950/25"}`}
+                          >
+                            <div className={`mt-1.5 h-2 w-2 rounded-full shrink-0 ${notification.is_read ? "bg-slate-300" : "bg-blue-600"}`} />
+                            <div className="min-w-0">
+                              <div className="text-xs font-bold truncate">{notification.title}</div>
+                              <div className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-2 mt-0.5">{notification.body}</div>
+                              <div className="text-[9px] text-slate-400 mt-1">{new Date(notification.created_at).toLocaleString("vi-VN")}</div>
+                            </div>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNotificationMenuOpen(false);
+                        setActiveTab("notifications");
+                      }}
+                      className="w-full h-10 border-t border-slate-100 dark:border-slate-800 text-xs font-bold text-[#13519c] hover:bg-slate-50 dark:hover:bg-slate-900"
+                    >
+                      Xem tất cả thông báo
+                    </button>
+                    {notificationPermission !== "granted" && notificationPermission !== "unsupported" && (
+                      <button
+                        type="button"
+                        onClick={requestBrowserNotificationPermission}
+                        className="w-full h-9 border-t border-slate-100 dark:border-slate-800 text-[11px] font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-900"
+                      >
+                        Bật thông báo trình duyệt
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
               <div
                 onClick={() => { setTutorProfileToView(null); setActiveTab("profile"); }}
                 className="flex items-center gap-2 cursor-pointer hover:opacity-85 transition shrink-0"
@@ -2494,6 +2920,24 @@ export default function HomeScreen() {
                           }`}
                       >
                         {grade}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="block text-[10px] uppercase font-bold text-slate-400">Loại tài liệu</label>
+                  <div className="flex flex-wrap gap-1">
+                    {["Tất cả", "Tài liệu", "Tài liệu ôn thi", "Ôn tập", "Sách", "Giữa kì 1", "Cuối kì 2"].map((type) => (
+                      <button
+                        key={type}
+                        onClick={() => setSelectedDocType(type)}
+                        className={`px-2 py-1 rounded text-[10px] font-semibold border transition ${selectedDocType === type
+                          ? "bg-[#13519c] text-white"
+                          : "bg-slate-50 hover:bg-slate-100 text-slate-655 dark:bg-slate-900/60 dark:text-slate-300 border-slate-100 dark:border-slate-800"
+                          }`}
+                      >
+                        {type}
                       </button>
                     ))}
                   </div>
@@ -2978,20 +3422,62 @@ export default function HomeScreen() {
               <div className="space-y-6">
 
                 {/* Header title */}
-                <div className="flex justify-between items-center">
-                  <h2 className="text-base font-semibold text-slate-900 dark:text-white">
-                    Kho Đề Thi & Tài Liệu Ôn Tập
-                  </h2>
+                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <h2 className="text-base font-semibold text-slate-900 dark:text-white">
+                      Kho Đề Thi & Tài Liệu Ôn Tập
+                    </h2>
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      Hiển thị {docRangeStart}-{docRangeEnd} trong {docTotal.toLocaleString("vi-VN")} tài liệu
+                    </p>
+                  </div>
                   <button
                     onClick={() => setUploadModalOpen(true)}
-                    className="bg-[#13519c] text-white hover:bg-blue-800 text-xs font-semibold px-3.5 py-2 rounded-lg cursor-pointer flex items-center gap-1.5"
+                    className="bg-[#13519c] text-white hover:bg-blue-800 text-xs font-semibold px-3.5 py-2 rounded-lg cursor-pointer flex items-center justify-center gap-1.5"
                   >
                     <IconUpload className="h-3.5 w-3.5" />Tải tài liệu lên
                   </button>
                 </div>
 
+                <div className="grid gap-2 rounded-xl border border-slate-200/70 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-[#111827] md:grid-cols-[1fr_150px_170px]">
+                  <div className="relative">
+                    <IconSearch className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      value={docSearch}
+                      onChange={(e) => setDocSearch(e.target.value)}
+                      placeholder="Tìm tên tài liệu hoặc người đăng..."
+                      className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-xs outline-none focus:border-[#13519c] dark:border-slate-800 dark:bg-slate-950"
+                    />
+                  </div>
+                  <select
+                    value={docSort}
+                    onChange={(e) => setDocSort(e.target.value as typeof docSort)}
+                    className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs outline-none dark:border-slate-800 dark:bg-slate-950"
+                  >
+                    <option value="newest">Mới nhất</option>
+                    <option value="oldest">Cũ nhất</option>
+                    <option value="downloads">Tải nhiều nhất</option>
+                    <option value="title">Tên A-Z</option>
+                  </select>
+                  <select
+                    value={docPageSize}
+                    onChange={(e) => setDocPageSize(Number(e.target.value))}
+                    className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs outline-none dark:border-slate-800 dark:bg-slate-950"
+                  >
+                    <option value={12}>Hiển thị 12 dòng</option>
+                    <option value={24}>Hiển thị 24 dòng</option>
+                    <option value={36}>Hiển thị 36 dòng</option>
+                    <option value={50}>Hiển thị 50 dòng</option>
+                  </select>
+                </div>
+
                 {/* Documents List */}
-                {documents.length === 0 ? (
+                {loadingDocuments ? (
+                  <div className="text-center py-12 text-slate-400 text-xs bg-white dark:bg-slate-900 border rounded-xl">
+                    Đang tải tài liệu...
+                  </div>
+                ) : documents.length === 0 ? (
                   <div className="text-center py-12 text-slate-400 text-xs bg-white dark:bg-slate-900 border rounded-xl">
                     Chưa tìm thấy tài liệu phù hợp với bộ lọc này.
                   </div>
@@ -3024,17 +3510,62 @@ export default function HomeScreen() {
                           </div>
                         </div>
 
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedDocument(doc);
-                          }}
-                          className="bg-slate-100 text-slate-700 hover:bg-[#13519c] hover:text-white text-xs px-3 h-8 rounded-lg cursor-pointer flex items-center gap-1 shrink-0 font-medium"
-                        >
-                          <IconDownload className="h-3.5 w-3.5" /> Xem / Tải
-                        </button>
+                        <div className="flex gap-2 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const fileUrl = doc.file_url;
+                              const isOfficeDoc = /\.(docx?|xlsx?|pptx?)$/i.test(fileUrl);
+                              const isLocal = fileUrl.includes("localhost") || fileUrl.includes("127.0.0.1") || fileUrl.includes("192.168.");
+                              if (isOfficeDoc && !isLocal) {
+                                window.open(`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(fileUrl)}`, "_blank");
+                              } else {
+                                window.open(fileUrl, "_blank");
+                              }
+                            }}
+                            className="bg-slate-100 text-slate-700 hover:bg-[#13519c] hover:text-white text-xs px-3 h-8 rounded-lg cursor-pointer flex items-center gap-1 font-medium transition"
+                          >
+                            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                              <circle cx="12" cy="12" r="3" />
+                            </svg>
+                            Xem tài liệu
+                          </button>
+
+                          {(user?.role === "ADMIN" || user?.id === doc.uploader_id) && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteDocument(doc.id)}
+                              className="bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white text-xs px-3 h-8 rounded-lg cursor-pointer flex items-center gap-1 font-medium transition"
+                              title="Xóa tài liệu này"
+                            >
+                              ✕ Xóa
+                            </button>
+                          )}
+                        </div>
                       </div>
                     ))}
+                    <div className="flex flex-col gap-2 rounded-xl border border-slate-200/70 bg-white p-3 text-[11px] text-slate-500 shadow-sm dark:border-slate-800 dark:bg-[#111827] md:flex-row md:items-center md:justify-between">
+                      <span>Trang {docPage} / {docTotalPages}</span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          disabled={docPage <= 1 || loadingDocuments}
+                          onClick={() => setDocPage((prev) => Math.max(1, prev - 1))}
+                          className="h-8 rounded-lg border border-slate-200 px-3 font-semibold disabled:cursor-not-allowed disabled:opacity-45 dark:border-slate-800"
+                        >
+                          Trước
+                        </button>
+                        <button
+                          type="button"
+                          disabled={docPage >= docTotalPages || loadingDocuments}
+                          onClick={() => setDocPage((prev) => Math.min(docTotalPages, prev + 1))}
+                          className="h-8 rounded-lg border border-slate-200 px-3 font-semibold disabled:cursor-not-allowed disabled:opacity-45 dark:border-slate-800"
+                        >
+                          Sau
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
@@ -3212,40 +3743,7 @@ export default function HomeScreen() {
                               type="button"
                               onClick={async (e) => {
                                 e.stopPropagation();
-                                if (wallet.available_balance >= Number(appt.price_paid)) {
-                                  if (confirm(`Xác nhận thanh toán ${formatVND(appt.price_paid)} từ ví nội bộ?`)) {
-                                    try {
-                                      const res = await fetch("http://localhost:5000/api/payments/wallet-pay", {
-                                        method: "POST",
-                                        headers: {
-                                          "Content-Type": "application/json",
-                                          Authorization: `Bearer ${token}`,
-                                        },
-                                        body: JSON.stringify({ appointmentId: appt.id }),
-                                      });
-                                      const json = await res.json();
-                                      if (json.success) {
-                                        showKntechAlert("success", "Thanh toán thành công", json.message);
-                                        logClientActivity("WALLET_PAY_APPOINTMENT", `Thanh toán học phí lớp ${appt.id} bằng ví nội bộ`);
-                                        fetchUserData();
-                                      } else {
-                                        showKntechAlert("error", "Lỗi giao dịch", json.message);
-                                      }
-                                    } catch (err) {
-                                      showKntechAlert("error", "Lỗi kết nối", "Không thể thanh toán bằng ví.");
-                                    }
-                                  }
-                                } else {
-                                  showKntechAlert(
-                                    "warning",
-                                    "Số dư không đủ",
-                                    `Học phí yêu cầu ${formatVND(appt.price_paid)} nhưng ví nội bộ của bác chỉ còn ${formatVND(wallet.available_balance)}. Đang chuyển hướng sang ví nội bộ để nạp thêm...`
-                                  );
-                                  setTimeout(() => {
-                                    setTopupAmountInput(String(Number(appt.price_paid) - wallet.available_balance));
-                                    setActiveTab("wallet");
-                                  }, 2500);
-                                }
+                                handleWalletPayAppointment(appt);
                               }}
                               className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold py-2 rounded-lg cursor-pointer transition flex items-center justify-center gap-1 shadow-sm"
                             >
@@ -3321,7 +3819,7 @@ export default function HomeScreen() {
                               </span>
                             ) : (
                               <span className="bg-emerald-500/10 text-emerald-600 text-[10px] font-medium px-2 py-0.5 rounded-full border border-emerald-500/10">
-                                Đã thanh toán (Holding an toàn)
+                                Đã thanh toán - giam 3 ngày
                               </span>
                             )}
                           </div>
@@ -3347,41 +3845,7 @@ export default function HomeScreen() {
                               </button>
                               <button
                                 type="button"
-                                onClick={async () => {
-                                  if (wallet.available_balance >= Number(appt.price_paid)) {
-                                    if (confirm(`Xác nhận thanh toán ${formatVND(appt.price_paid)} từ ví nội bộ?`)) {
-                                      try {
-                                        const res = await fetch("http://localhost:5000/api/payments/wallet-pay", {
-                                          method: "POST",
-                                          headers: {
-                                            "Content-Type": "application/json",
-                                            Authorization: `Bearer ${token}`,
-                                          },
-                                          body: JSON.stringify({ appointmentId: appt.id }),
-                                        });
-                                        const json = await res.json();
-                                        if (json.success) {
-                                          showKntechAlert("success", "Thanh toán thành công", json.message);
-                                          fetchUserData();
-                                        } else {
-                                          showKntechAlert("error", "Lỗi giao dịch", json.message);
-                                        }
-                                      } catch (e) {
-                                        showKntechAlert("error", "Lỗi kết nối", "Không thể thanh toán bằng ví.");
-                                      }
-                                    }
-                                  } else {
-                                    showKntechAlert(
-                                      "warning",
-                                      "Số dư không đủ",
-                                      `Học phí yêu cầu ${formatVND(appt.price_paid)} nhưng ví nội bộ của bác chỉ còn ${formatVND(wallet.available_balance)}. Đang chuyển hướng sang ví nội bộ để nạp thêm...`
-                                    );
-                                    setTimeout(() => {
-                                      setTopupAmountInput(String(Number(appt.price_paid) - wallet.available_balance));
-                                      setActiveTab("wallet");
-                                    }, 2500);
-                                  }
-                                }}
+                                onClick={() => handleWalletPayAppointment(appt)}
                                 className="bg-emerald-600 text-white text-[11px] font-semibold px-4 py-2 rounded-lg hover:bg-emerald-700 cursor-pointer shadow-sm"
                               >
                                 👛 Ví nội bộ ({formatVND(wallet.available_balance)})
@@ -3419,7 +3883,7 @@ export default function HomeScreen() {
                   </div>
 
                   <div className="bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-sm">
-                    <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Đang giữ bảo đảm (Holding)</span>
+                    <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Tiền đang giam 3 ngày</span>
                     <div className="text-2xl font-bold mt-2 text-slate-700 dark:text-white">{formatVND(wallet.holding_balance)}</div>
                   </div>
                 </div>
@@ -3520,7 +3984,7 @@ export default function HomeScreen() {
                           walletLedger.map((l) => (
                             <tr key={l.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/40 transition">
                               <td className="px-4 py-2.5 text-slate-400">{new Date(l.created_at).toLocaleString("vi-VN")}</td>
-                              <td className="px-4 py-2.5 font-sans font-semibold">{l.entry_type}</td>
+                              <td className="px-4 py-2.5 font-sans font-semibold">{l.entry_type_label || walletEntryTypeLabel(l.entry_type)}</td>
                               <td className="px-4 py-2.5 text-slate-550">{l.ref_id}</td>
                               <td className={`px-4 py-2.5 text-right font-bold ${l.amount > 0 ? "text-emerald-600" : "text-rose-600"}`}>
                                 {l.amount > 0 ? "+" : ""}{formatVND(l.amount)}
@@ -3569,8 +4033,59 @@ export default function HomeScreen() {
                 loadingCommissions={loadingCommissions}
                 handleDecideCommission={handleDecideCommission}
                 fetchPendingCommissions={fetchPendingCommissions}
+                adminNotificationForm={adminNotificationForm}
+                setAdminNotificationForm={setAdminNotificationForm}
+                handleSendAdminNotification={handleSendAdminNotification}
+                sendingAdminNotification={sendingAdminNotification}
                 formatVND={formatVND}
+                fetchPendingTutors={fetchPendingTutors}
+                setPreviewDoc={setPreviewDoc}
               />
+            )}
+
+            {/* TAB: NOTIFICATIONS */}
+            {activeTab === "notifications" && (
+              <div className="space-y-4 pb-20 md:pb-0">
+                <div className="bg-white dark:bg-[#111827] border border-slate-200/60 dark:border-slate-800 rounded-xl p-4 shadow-sm flex items-center justify-between">
+                  <div>
+                    <h2 className="text-base font-bold text-slate-900 dark:text-white">Thông báo</h2>
+                    <p className="text-xs text-slate-500 mt-1">Tất cả thông báo từ hệ thống, admin và các hoạt động liên quan đến tài khoản.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={markAllNotificationsReadClient}
+                    className="h-9 px-3 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
+                  >
+                    Đánh dấu đã đọc
+                  </button>
+                </div>
+
+                <div className="bg-white dark:bg-[#111827] border border-slate-200/60 dark:border-slate-800 rounded-xl shadow-sm overflow-hidden">
+                  {notifications.length === 0 ? (
+                    <div className="p-8 text-center text-sm text-slate-400">Chưa có thông báo nào.</div>
+                  ) : (
+                    <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {notifications.map((notification) => (
+                        <button
+                          key={notification.id}
+                          type="button"
+                          onClick={() => handleNotificationOpen(notification)}
+                          className={`w-full text-left p-4 flex gap-3 hover:bg-slate-50 dark:hover:bg-slate-900/60 transition ${notification.is_read ? "bg-white dark:bg-[#111827]" : "bg-blue-50/70 dark:bg-blue-950/20"}`}
+                        >
+                          <div className={`mt-1 h-2.5 w-2.5 rounded-full shrink-0 ${notification.is_read ? "bg-slate-300" : "bg-blue-600"}`} />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center justify-between gap-3">
+                              <h3 className="text-sm font-bold text-slate-900 dark:text-white truncate">{notification.title}</h3>
+                              <span className="text-[10px] text-slate-400 shrink-0">{new Date(notification.created_at).toLocaleString("vi-VN")}</span>
+                            </div>
+                            <p className="mt-1 text-xs text-slate-600 dark:text-slate-350 line-clamp-2">{notification.body}</p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
             )}
 
             {/* TAB 9: PROFILE (View/Edit My Profile or View Tutor Profile) */}
@@ -3584,7 +4099,12 @@ export default function HomeScreen() {
                     <div className="flex flex-col items-center gap-4 text-center mt-4">
                       <img src={getAvatarUrl(tutorProfileToView)} className="w-24 h-24 rounded-full border-4 border-blue-500 bg-slate-50 object-cover" alt="" />
                       <div>
-                        <h2 className="text-xl font-bold flex items-center justify-center gap-1.5 dark:text-white">{tutorProfileToView.full_name} <span className="text-[10px] bg-emerald-100 text-emerald-700 font-bold px-2 py-0.5 rounded-full">✓ Đã xác minh</span></h2>
+                        <h2 className="text-xl font-bold flex items-center justify-center gap-1.5 dark:text-white">
+                          {tutorProfileToView.full_name}
+                          {tutorProfileToView.is_verified === "APPROVED" && (
+                            <span className="text-[10px] bg-emerald-100 text-emerald-700 font-bold px-2 py-0.5 rounded-full">✓ Đã xác minh</span>
+                          )}
+                        </h2>
                         <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{tutorProfileToView.school} • {tutorProfileToView.major}</p>
                       </div>
                     </div>
@@ -3604,6 +4124,53 @@ export default function HomeScreen() {
                       <h3 className="font-bold mb-2 dark:text-white">Giới thiệu bản thân</h3>
                       <p className="text-sm text-slate-600 dark:text-slate-350 bg-slate-50 dark:bg-slate-800 p-4 rounded-xl leading-relaxed whitespace-pre-line border border-slate-100 dark:border-slate-700">{tutorProfileToView.bio || "Chưa có thông tin giới thiệu."}</p>
                     </div>
+
+                    {tutorProfileToView.documents && tutorProfileToView.documents.length > 0 && (
+                      <div className="mt-6 text-left">
+                        <h3 className="font-bold mb-3 dark:text-white">Bằng cấp & Chứng chỉ ({tutorProfileToView.documents.length})</h3>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                          {tutorProfileToView.documents.map((doc: any) => {
+                            const fileUrl = `http://localhost:5000/api/tutors/documents/${doc.id}?token=${token}`;
+                            const isImage = doc.mime_type?.startsWith("image/");
+                            return (
+                              <div
+                                key={doc.id}
+                                className="bg-slate-50 dark:bg-slate-800 p-2.5 rounded-xl border border-slate-100 dark:border-slate-700 flex flex-col justify-between gap-2"
+                              >
+                                <span className="text-[10px] font-semibold text-slate-700 dark:text-slate-300 truncate" title={doc.original_name}>
+                                  {doc.original_name}
+                                </span>
+                                {isImage ? (
+                                  <div
+                                    onClick={() => setPreviewDoc({ title: doc.original_name, file_url: fileUrl })}
+                                    className="block relative group overflow-hidden rounded bg-slate-100 dark:bg-slate-900 cursor-pointer"
+                                  >
+                                    <img
+                                      src={fileUrl}
+                                      alt={doc.original_name}
+                                      className="h-20 w-full object-cover rounded hover:scale-105 transition duration-200"
+                                    />
+                                    <div className="absolute inset-0 bg-black/45 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-[8px] text-white font-bold">
+                                      XEM 🔎
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div
+                                    onClick={() => setPreviewDoc({ title: doc.original_name, file_url: fileUrl })}
+                                    className="h-20 rounded bg-blue-50 dark:bg-slate-850 flex flex-col items-center justify-center border border-dashed border-blue-200/50 dark:border-slate-700 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-slate-800 transition text-[10px] font-bold gap-1 text-center px-1 cursor-pointer"
+                                  >
+                                    <span>📄 {doc.original_name.split(".").pop()?.toUpperCase()} File</span>
+                                    <span className="text-[8px] font-semibold text-slate-400 dark:text-slate-500">
+                                      Click để mở ↗
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
 
                     <div className="mt-6">
                       <h3 className="font-bold mb-4 flex items-center gap-2 dark:text-white"><i className="fa-solid fa-star text-amber-500"></i> Đánh giá từ học viên</h3>
@@ -3679,7 +4246,14 @@ export default function HomeScreen() {
                             />
                           </div>
                           <div className="text-center">
-                            <div className="font-bold text-lg dark:text-white">{user.fullName}</div>
+                            <div className="font-bold text-lg dark:text-white flex items-center justify-center gap-1.5">
+                              {user.fullName}
+                              {user.role === "TUTOR" && tutorStatus === "APPROVED" && (
+                                <span className="text-[10px] bg-emerald-100 text-emerald-700 font-bold px-2 py-0.5 rounded-full inline-block align-middle">
+                                  ✓ Đã xác minh
+                                </span>
+                              )}
+                            </div>
                             <div className="text-xs font-semibold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-md mt-1 inline-block">
                               Vai trò: {user.role === "TUTOR" ? "Gia Sư" : user.role === "STUDENT" ? "Học Sinh / Phụ Huynh" : "Quản Trị Viên"}
                             </div>
@@ -3773,6 +4347,66 @@ export default function HomeScreen() {
                               {submittingCompletion ? "Đang lưu..." : "Lưu thay đổi"}
                             </button>
                           </div>
+
+                          {user.role === "TUTOR" && (
+                            <div className="border-t border-slate-200 dark:border-slate-700 pt-5 mt-5">
+                              <h3 className="text-xs font-bold text-slate-400 uppercase mb-3 text-left">Minh chứng xác minh của bạn</h3>
+                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                {verificationForm.cccdFront && (
+                                  <div className="bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800 flex flex-col gap-2 text-left">
+                                    <span className="text-[10px] font-bold text-slate-500">CCCD Mặt trước</span>
+                                    <div
+                                      onClick={() => setPreviewDoc({ title: "CCCD Mặt trước", file_url: verificationForm.cccdFront })}
+                                      className="relative group overflow-hidden rounded h-20 bg-slate-100 dark:bg-slate-950 cursor-pointer"
+                                    >
+                                      <img src={verificationForm.cccdFront} className="h-full w-full object-cover rounded hover:scale-105 transition" alt="CCCD Front" />
+                                      <div className="absolute inset-0 bg-black/45 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-[8px] text-white font-bold">XEM 🔎</div>
+                                    </div>
+                                  </div>
+                                )}
+                                {verificationForm.cccdBack && (
+                                  <div className="bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800 flex flex-col gap-2 text-left">
+                                    <span className="text-[10px] font-bold text-slate-500">CCCD Mặt sau</span>
+                                    <div
+                                      onClick={() => setPreviewDoc({ title: "CCCD Mặt sau", file_url: verificationForm.cccdBack })}
+                                      className="relative group overflow-hidden rounded h-20 bg-slate-100 dark:bg-slate-950 cursor-pointer"
+                                    >
+                                      <img src={verificationForm.cccdBack} className="h-full w-full object-cover rounded hover:scale-105 transition" alt="CCCD Back" />
+                                      <div className="absolute inset-0 bg-black/45 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-[8px] text-white font-bold">XEM 🔎</div>
+                                    </div>
+                                  </div>
+                                )}
+                                {verificationForm.certificate && (
+                                  <div className="bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800 flex flex-col gap-2 text-left">
+                                    <span className="text-[10px] font-bold text-slate-500">Bằng cấp / Chứng chỉ</span>
+                                    {/\.(png|jpe?g|webp|gif)$/i.test(verificationForm.certificate) ? (
+                                      <div
+                                        onClick={() => setPreviewDoc({ title: "Bằng cấp / Chứng chỉ", file_url: verificationForm.certificate })}
+                                        className="relative group overflow-hidden rounded h-20 bg-slate-100 dark:bg-slate-950 cursor-pointer"
+                                      >
+                                        <img src={verificationForm.certificate} className="h-full w-full object-cover rounded hover:scale-105 transition" alt="Certificate" />
+                                        <div className="absolute inset-0 bg-black/45 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-[8px] text-white font-bold">XEM 🔎</div>
+                                      </div>
+                                    ) : (
+                                      <div
+                                        onClick={() => setPreviewDoc({ title: "Bằng cấp / Chứng chỉ", file_url: verificationForm.certificate })}
+                                        className="h-20 rounded bg-blue-50 dark:bg-slate-850 flex flex-col items-center justify-center border border-dashed border-blue-200/50 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-slate-800 transition text-[10px] font-bold gap-1 text-center cursor-pointer"
+                                      >
+                                        <span>📄 FILE</span>
+                                        <span className="text-[8px] font-semibold text-slate-400 dark:text-slate-500">Click để mở ↗</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                              <div className="mt-3 text-[11px] text-slate-400 text-left">
+                                Trạng thái xác minh:{" "}
+                                <span className={`font-bold ${tutorStatus === "APPROVED" ? "text-emerald-600" : tutorStatus === "PENDING" ? "text-amber-500" : "text-rose-500"}`}>
+                                  {tutorStatus === "APPROVED" ? "✓ Đã phê duyệt" : tutorStatus === "PENDING" ? "🕒 Đang chờ duyệt" : "📝 Chưa xác minh / Bị từ chối"}
+                                </span>
+                              </div>
+                            </div>
+                          )}
                         </form>
                       </div>
                     </div>
@@ -3864,6 +4498,7 @@ export default function HomeScreen() {
         setTopupAmountInput={setTopupAmountInput}
         setActiveTab={setActiveTab}
         handleSimulatePayment={handleSimulatePayment}
+        handleWalletPayAppointment={handleWalletPayAppointment}
       />
 
       <ClassroomView
@@ -3927,12 +4562,19 @@ export default function HomeScreen() {
         setSelectedTutor={setSelectedTutor}
         openAuth={openAuth}
         formatVND={formatVND}
+        setPreviewDoc={setPreviewDoc}
       />
 
       <DocDetailModal
         selectedDocument={selectedDocument}
         setSelectedDocument={setSelectedDocument}
         formatVND={formatVND}
+        setPreviewDoc={setPreviewDoc}
+      />
+
+      <DocumentPreviewModal
+        previewDoc={previewDoc}
+        onClose={() => setPreviewDoc(null)}
       />
 
 
@@ -4160,6 +4802,42 @@ export default function HomeScreen() {
         onClose={() => setCustomAlertOpen(false)}
       />
 
+      {confirmDialog && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-md">
+          <div className="w-full max-w-sm rounded-3xl border border-white/20 bg-white/90 p-6 shadow-2xl dark:border-slate-800 dark:bg-slate-900/90">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-blue-500/20 bg-blue-500/10 text-[#13519c]">
+              <IconWallet className="h-7 w-7" />
+            </div>
+            <h3 className="text-center text-base font-bold text-slate-900 dark:text-white">{confirmDialog.title}</h3>
+            <p className="mt-2 whitespace-pre-line text-center text-xs leading-relaxed text-slate-550 dark:text-slate-400">
+              {confirmDialog.message}
+            </p>
+            <div className="mt-6 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmDialog(null)}
+                className="h-10 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-600 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300"
+              >
+                {confirmDialog.cancelText || "Hủy"}
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  const action = confirmDialog.onConfirm;
+                  setConfirmDialog(null);
+                  await action();
+                }}
+                className={`h-10 rounded-xl text-xs font-bold text-white ${
+                  confirmDialog.tone === "danger" ? "bg-rose-600 hover:bg-rose-700" : "bg-[#13519c] hover:bg-blue-800"
+                }`}
+              >
+                {confirmDialog.confirmText || "Xác nhận"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* MOBILE BOTTOM NAVIGATION BAR */}
       <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 shadow-[0_-4px_12px_rgba(0,0,0,0.05)] rounded-t-2xl z-40 px-2 pb-5 pt-2 flex justify-between items-center">
         {/* Tab 1: Trang chủ */}
@@ -4186,12 +4864,17 @@ export default function HomeScreen() {
           <span className="text-[10px] font-medium mt-0.5">Tin tức</span>
         </button>
 
-        {/* Tab 4: Cá nhân */}
-        <button onClick={() => setActiveTab("profile")} className={`flex flex-col items-center justify-center w-1/4 ${activeTab === "profile" ? "text-blue-500" : "text-slate-400"}`}>
-          <div className={`p-1.5 rounded-full ${activeTab === "profile" ? "bg-blue-50" : ""}`}>
-            <svg className="w-5 h-5" fill={activeTab === "profile" ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+        {/* Tab 4: Thông báo */}
+        <button onClick={() => token ? setActiveTab("notifications") : openAuth("login")} className={`flex flex-col items-center justify-center w-1/4 ${activeTab === "notifications" ? "text-blue-500" : "text-slate-400"}`}>
+          <div className={`p-1.5 rounded-full relative ${activeTab === "notifications" ? "bg-blue-50" : ""}`}>
+            <IconBell className="w-5 h-5" />
+            {unreadNotifications > 0 && (
+              <span className="absolute -right-1 -top-1 min-w-3.5 h-3.5 px-0.5 rounded-full bg-rose-500 text-white text-[8px] font-black flex items-center justify-center">
+                {unreadNotifications > 9 ? "9+" : unreadNotifications}
+              </span>
+            )}
           </div>
-          <span className="text-[10px] font-medium mt-0.5">Cá nhân</span>
+          <span className="text-[10px] font-medium mt-0.5">Thông báo</span>
         </button>
       </div>
 

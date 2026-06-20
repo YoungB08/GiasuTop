@@ -2,6 +2,7 @@ import { z } from "zod";
 
 const EnvSchema = z.object({
   PORT: z.coerce.number().int().positive().optional(),
+  TRUST_PROXY_HOPS: z.coerce.number().int().min(0).default(0),
 
   DB_HOST: z.string().default("localhost"),
   DB_USER: z.string().default("root"),
@@ -17,9 +18,18 @@ const EnvSchema = z.object({
   SEPAY_BANK_CODE: z.string().optional(),
   SEPAY_ACCOUNT_NUMBER: z.string().optional(),
   SEPAY_ACCOUNT_NAME: z.string().optional(),
+  SEPAY_QR_TEMPLATE: z.enum(["", "compact", "qronly", "standee"]).default("compact"),
+  SEPAY_QR_SHOW_INFO: z.coerce.boolean().default(true),
+  SEPAY_QR_DOWNLOAD: z.coerce.boolean().default(false),
+  SEPAY_QR_FULL_ACC: z.coerce.boolean().default(false),
+  SEPAY_QR_STORE_NAME: z.string().optional(),
   SEPAY_MERCHANT_ID: z.string().optional(),
   SEPAY_SECRET_KEY: z.string().optional(),
   SEPAY_ENV: z.enum(["sandbox", "production"]).default("sandbox"),
+
+  ZALO_BOT_TOKEN: z.string().optional(),
+  ZALO_ADMIN_CHAT_IDS: z.string().optional(), // comma-separated chat ids
+  ZALO_BOT_API_URL: z.string().default("https://bot-api.zaloplatforms.com"),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

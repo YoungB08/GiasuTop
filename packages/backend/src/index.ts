@@ -11,7 +11,8 @@ import directChatRoutes from './routes/directChat.routes';
 import walletRoutes from './routes/wallet.routes';
 import filterRoutes from './routes/filter.routes';
 import classRoutes from './routes/class.routes';
-import { listSubjects, listNews, listDocuments, uploadDocument } from './controllers/admin.controller';
+import notificationRoutes from './routes/notification.routes';
+import { listSubjects, listNews, listDocuments, uploadDocument, deleteDocumentSecure } from './controllers/admin.controller';
 import { createChatUpload, detectAllowedUpload, CHAT_UPLOAD_DIR } from './utils/upload';
 import { requireAuth } from './middlewares/auth';
 import { errorHandler, notFound } from './middlewares/error';
@@ -21,12 +22,13 @@ import rateLimit from 'express-rate-limit';
 import path from 'path';
 import fs from 'fs';
 import { requestLogger } from './middlewares/log.middleware';
+import { releaseDueEscrowAppointments } from './services/escrow.service';
 
 dotenv.config();
 
 const app = express();
-app.set('trust proxy', true);
 const env = getEnv();
+app.set('trust proxy', env.TRUST_PROXY_HOPS > 0 ? env.TRUST_PROXY_HOPS : false);
 const PORT = env.PORT || 5000;
 
 app.use(express.json());
@@ -74,12 +76,14 @@ app.use('/api/chats', chatRoutes);
 app.use('/api/wallet', walletRoutes);
 app.use('/api/filters', filterRoutes);
 app.use('/api/classes', classRoutes);
+app.use('/api/notifications', notificationRoutes);
 app.get('/api/subjects', listSubjects);
 app.get('/api/news', listNews);
 app.get('/api/documents', listDocuments);
 import { createDocsUpload } from './utils/upload';
 const docsUpload = createDocsUpload();
 app.post('/api/documents/upload', requireAuth, docsUpload.single('file'), uploadDocument);
+app.delete('/api/documents/:id', requireAuth, deleteDocumentSecure);
 
 // Chat file upload endpoint
 const chatUpload = createChatUpload();
@@ -97,7 +101,7 @@ app.post('/api/chats/upload', requireAuth, chatUpload.single('file'), async (req
     return res.json({
       success: true,
       fileUrl,
-      fileName: req.file.originalname,
+      fileName: Buffer.from(req.file.originalname, "latin1").toString("utf8"),
       fileType: req.file.mimetype,
     });
   } catch (e: any) {
@@ -127,6 +131,10 @@ async function runStartupMigration() {
       const [columns]: any = await pool.query(`SHOW COLUMNS FROM \`${table}\` LIKE ?`, [column]);
       return columns.length > 0;
     };
+    const indexExists = async (table: string, indexName: string) => {
+      const [indexes]: any = await pool.query(`SHOW INDEX FROM \`${table}\` WHERE Key_name = ?`, [indexName]);
+      return indexes.length > 0;
+    };
     if (!(await columnExists("users", "username"))) {
       console.log("Adding username column to users...");
       await pool.query("ALTER TABLE users ADD COLUMN username VARCHAR(100) NULL UNIQUE AFTER full_name");
@@ -147,6 +155,64 @@ async function runStartupMigration() {
       console.log("Adding age column to users...");
       await pool.query("ALTER TABLE users ADD COLUMN age INT NULL");
     }
+    if (!(await columnExists("appointments", "commission_percent_snapshot"))) {
+      console.log("Adding commission_percent_snapshot column to appointments...");
+      await pool.query("ALTER TABLE appointments ADD COLUMN commission_percent_snapshot DECIMAL(5,2) NULL AFTER payment_status");
+    }
+    if (!(await columnExists("appointments", "commission_amount"))) {
+      console.log("Adding commission_amount column to appointments...");
+      await pool.query("ALTER TABLE appointments ADD COLUMN commission_amount DECIMAL(20,2) NULL AFTER commission_percent_snapshot");
+    }
+    if (!(await columnExists("appointments", "tutor_earning"))) {
+      console.log("Adding tutor_earning column to appointments...");
+      await pool.query("ALTER TABLE appointments ADD COLUMN tutor_earning DECIMAL(20,2) NULL AFTER commission_amount");
+    }
+    if (!(await columnExists("appointments", "escrow_release_date"))) {
+      console.log("Adding escrow_release_date column to appointments...");
+      await pool.query("ALTER TABLE appointments ADD COLUMN escrow_release_date DATETIME NULL AFTER tutor_earning");
+    }
+    if (!(await columnExists("appointments", "escrow_released_at"))) {
+      console.log("Adding escrow_released_at column to appointments...");
+      await pool.query("ALTER TABLE appointments ADD COLUMN escrow_released_at DATETIME NULL AFTER escrow_release_date");
+    }
+    if (!(await columnExists("documents", "reject_reason"))) {
+      console.log("Adding reject_reason column to documents...");
+      await pool.query("ALTER TABLE documents ADD COLUMN reject_reason TEXT NULL AFTER is_approved");
+    }
+    if (!(await indexExists("documents", "idx_documents_library_filters"))) {
+      console.log("Adding documents library filter index...");
+      await pool.query("ALTER TABLE documents ADD INDEX idx_documents_library_filters (is_approved, grade_tag, subject_tag, type_tag, created_at, id)");
+    }
+    if (!(await indexExists("documents", "idx_documents_downloads"))) {
+      console.log("Adding documents downloads index...");
+      await pool.query("ALTER TABLE documents ADD INDEX idx_documents_downloads (is_approved, download_count, created_at, id)");
+    }
+    const [walletLedgerRefCol]: any = await pool.query("SHOW COLUMNS FROM wallet_ledger LIKE 'ref_id'");
+    if (walletLedgerRefCol.length > 0 && !walletLedgerRefCol[0].Type.toLowerCase().includes("255")) {
+      console.log("Extending wallet_ledger.ref_id to VARCHAR(255)...");
+      await pool.query("ALTER TABLE wallet_ledger MODIFY COLUMN ref_id VARCHAR(255) NULL");
+    }
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS notifications (
+        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        recipient_id VARCHAR(36) NOT NULL,
+        actor_id VARCHAR(36) NULL,
+        type VARCHAR(60) NOT NULL,
+        title VARCHAR(180) NOT NULL,
+        body TEXT NOT NULL,
+        link_url TEXT NULL,
+        entity_type VARCHAR(60) NULL,
+        entity_id VARCHAR(64) NULL,
+        metadata JSON NULL,
+        is_read TINYINT NOT NULL DEFAULT 0,
+        read_at DATETIME NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        INDEX (recipient_id, is_read, created_at),
+        INDEX (type),
+        INDEX (entity_type, entity_id)
+      )
+    `);
     
     // Alter sepay_transactions.sepay_id to VARCHAR(100) if it is still INT to allow UUID-like strings
     const [sepayIdCol]: any = await pool.query("SHOW COLUMNS FROM sepay_transactions LIKE 'sepay_id'");
@@ -163,6 +229,13 @@ async function runStartupMigration() {
 
 // Run migrations on start
 runStartupMigration();
+
+const ESCROW_RELEASE_INTERVAL_MS = 5 * 60 * 1000;
+setInterval(() => {
+  releaseDueEscrowAppointments().catch((error) => {
+    console.error("Failed to run escrow release job:", error);
+  });
+}, ESCROW_RELEASE_INTERVAL_MS);
 
 const uploadsDir = path.join(process.cwd(), "uploads", "tutors");
 fs.mkdirSync(uploadsDir, { recursive: true });

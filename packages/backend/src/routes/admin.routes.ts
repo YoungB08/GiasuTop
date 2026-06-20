@@ -22,9 +22,13 @@ import {
   listPendingDocuments,
   decideDocument,
   deleteDocument,
+  deleteTutorDocument,
   listProposedCommissions,
   decideProposedCommission,
+  listEscrowAppointments,
+  releaseEscrowAppointment,
 } from "../controllers/admin.controller";
+import { adminSendNotification } from "../controllers/notification.controller";
 
 const router = Router();
 
@@ -42,6 +46,7 @@ router.post("/reports/resolve", resolveReport);
 router.get("/logs", listSystemLogs);
 router.get("/users", listAllUsers);
 router.put("/users/:userId", updateUserAdmin);
+router.post("/notifications/send", adminSendNotification);
 router.get("/stats", getSystemStats);
 router.get("/dashboard-details", getDashboardDetails);
 
@@ -60,6 +65,13 @@ router.delete("/news/:id", deleteNews);
 router.get("/documents/pending", listPendingDocuments);
 router.post("/documents/:id/decide", decideDocument);
 router.delete("/documents/:id", deleteDocument);
+router.delete("/tutor-documents/:id", deleteTutorDocument);
+
+router.get("/commissions/pending", listProposedCommissions);
+router.post("/commissions/decide", decideProposedCommission);
+
+router.get("/escrow/appointments", listEscrowAppointments);
+router.post("/escrow/:appointmentId/release", releaseEscrowAppointment);
 
 export default router;
 
