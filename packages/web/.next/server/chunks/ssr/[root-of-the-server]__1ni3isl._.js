@@ -1,0 +1,3 @@
+module.exports=[24361,(a,b,c)=>{b.exports=a.x("util",()=>require("util"))},28939,a=>{"use strict";let b="https://kntech.site";function c(a){return/^https?:\/\//i.test(a)?a:`${b}${a.startsWith("/")?a:`/${a}`}`}a.s(["API_BASE_URL",0,b,"apiUrl",0,c,"publicAssetUrl",0,function(a){return a?/^https?:\/\//i.test(a)||a.startsWith("data:")||a.startsWith("blob:")?a:c(a):""}])}];
+
+//# sourceMappingURL=%5Broot-of-the-server%5D__1ni3isl._.js.map
