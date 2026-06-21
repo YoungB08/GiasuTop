@@ -10,6 +10,11 @@ type WalletTabProps = {
   setBankNoInput: (val: string) => void;
   bankNameInput: string;
   setBankNameInput: (val: string) => void;
+  withdrawBankCode?: string;
+  setWithdrawBankCode?: (val: string) => void;
+  withdrawBankName?: string;
+  setWithdrawBankName?: (val: string) => void;
+  sepayBanks?: Array<{ name: string; code: string; short_name?: string; shortName?: string; supported?: boolean }>;
   walletLedger: any[];
   formatVND: (val: any) => string;
   handleWebTopup: (e: React.FormEvent) => void;
@@ -26,6 +31,10 @@ export default function WalletTab({
   setBankNoInput,
   bankNameInput,
   setBankNameInput,
+  withdrawBankCode = "",
+  setWithdrawBankCode,
+  setWithdrawBankName,
+  sepayBanks = [],
   walletLedger,
   formatVND,
   handleWebTopup,
@@ -106,6 +115,34 @@ export default function WalletTab({
               />
             </div>
             <div className="grid grid-cols-2 gap-2">
+              <div className="col-span-2">
+                <label className="block text-[10px] font-semibold text-slate-400 mb-1">Ngan hang nhan</label>
+                <div className="grid grid-cols-[44px_1fr] gap-2">
+                  <div className="h-9 rounded-lg border bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 flex items-center justify-center overflow-hidden">
+                    {withdrawBankCode ? (
+                      <img src={`https://cdn.vietqr.io/img/${sepayBanks.find((b) => (b.short_name || b.shortName || b.code) === withdrawBankCode)?.code || withdrawBankCode}.png`} alt={withdrawBankCode} className="max-h-6 max-w-9 object-contain" />
+                    ) : (
+                      <span className="text-[9px] font-bold text-slate-400">BANK</span>
+                    )}
+                  </div>
+                  <select
+                    value={withdrawBankCode}
+                    onChange={(e) => {
+                      const bank = sepayBanks.find((b) => (b.short_name || b.shortName || b.code) === e.target.value);
+                      setWithdrawBankCode?.(e.target.value);
+                      setWithdrawBankName?.(bank?.name || e.target.value);
+                    }}
+                    className="w-full h-9 px-3 text-xs rounded-lg border bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 focus:outline-none"
+                    required
+                  >
+                    <option value="">Chon ngan hang...</option>
+                    {sepayBanks.map((bank) => {
+                      const code = bank.short_name || bank.shortName || bank.code;
+                      return <option key={bank.code} value={code}>{code} - {bank.name}</option>;
+                    })}
+                  </select>
+                </div>
+              </div>
               <div>
                 <label className="block text-[10px] font-semibold text-slate-400 mb-1">Số tài khoản</label>
                 <input

@@ -165,6 +165,15 @@ type NotificationItem = {
   created_at: string;
 };
 
+type SepayBank = {
+  name: string;
+  code: string;
+  bin?: string;
+  short_name?: string;
+  shortName?: string;
+  supported?: boolean;
+};
+
 // ===== MOCK DATA (fallback khi API rỗng) =====
 const MOCK_TUTORS: Tutor[] = [
   { user_id: "m1", full_name: "Nguyễn Minh Khoa", email: "khoa@gmail.com", avatar_url: null, bio: "Sinh viên năm 4 ĐH Bách Khoa, 3 năm kinh nghiệm dạy kèm Toán và Lý. Phương pháp từ cơ bản đến nâng cao, kết quả thực tế.", school: "ĐH Bách Khoa HN", major: "Kỹ thuật Điện", year_of_study: "Sinh viên năm 4", hourly_rate: "180000", subjects_to_teach: ["Toán", "Lý"] },
@@ -509,6 +518,9 @@ export default function HomeScreen() {
   const [withdrawAmountInput, setWithdrawAmountInput] = useState("");
   const [bankNoInput, setBankNoInput] = useState("");
   const [bankNameInput, setBankNameInput] = useState("");
+  const [withdrawBankCode, setWithdrawBankCode] = useState("");
+  const [withdrawBankName, setWithdrawBankName] = useState("");
+  const [sepayBanks, setSepayBanks] = useState<SepayBank[]>([]);
 
   // Subjects, News, and Documents Lists
   const [subjectList, setSubjectList] = useState<string[]>(["Tất cả"]);
@@ -593,7 +605,7 @@ export default function HomeScreen() {
   const completeAvatarInputRef = useRef<HTMLInputElement>(null);
 
   // Admin Dashboard Section States
-  const [adminTab, setAdminTab] = useState<"dashboard" | "subjects" | "tutors" | "monitor" | "users" | "pending_docs" | "news_crud" | "notifications" | "escrow">("dashboard");
+  const [adminTab, setAdminTab] = useState<"dashboard" | "subjects" | "tutors" | "monitor" | "users" | "pending_docs" | "news_crud" | "notifications" | "escrow" | "withdrawals">("dashboard");
 
   // Admin -> Subject management states
   const [subjectNameInput, setSubjectNameInput] = useState("");
@@ -759,6 +771,25 @@ export default function HomeScreen() {
     }
   };
 
+  const fetchSepayBanks = async () => {
+    try {
+      const res = await fetch("http://localhost:5000/api/payments/sepay/banks");
+      const json = await res.json();
+      const list = json.data?.data || json.data?.banks || json.data || [];
+      if (Array.isArray(list)) {
+        const supported = list.filter((bank: SepayBank) => bank.supported !== false);
+        setSepayBanks(supported);
+        if (!withdrawBankCode && supported[0]) {
+          const defaultCode = supported[0].short_name || supported[0].shortName || supported[0].code;
+          setWithdrawBankCode(defaultCode);
+          setWithdrawBankName(supported[0].name || defaultCode);
+        }
+      }
+    } catch (e) {
+      console.error("Loi tai danh sach ngan hang:", e);
+    }
+  };
+
   const sendChat = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!globalChatInput.trim() || !token) return;
@@ -809,6 +840,7 @@ export default function HomeScreen() {
   useEffect(() => {
     fetchNews();
     fetchSubjects();
+    fetchSepayBanks();
   }, []);
 
   useEffect(() => {
@@ -933,7 +965,7 @@ export default function HomeScreen() {
     if (notification.link_url?.includes("admin")) {
       setActiveTab("admin");
       if (notification.link_url.includes("tutors")) setAdminTab("tutors");
-      else if (notification.link_url.includes("withdrawals")) setAdminTab("monitor");
+      else if (notification.link_url.includes("withdrawals")) setAdminTab("withdrawals");
       return;
     }
     if (notification.link_url?.includes("profile")) {
@@ -1245,7 +1277,7 @@ export default function HomeScreen() {
       showKntechAlert("warning", "Sai số tiền", "Vui lòng nhập số tiền rút hợp lệ");
       return;
     }
-    if (!bankNoInput || !bankNameInput) {
+    if (!withdrawBankCode || !withdrawBankName || !bankNoInput || !bankNameInput) {
       showKntechAlert("warning", "Thiếu thông tin", "Vui lòng nhập đầy đủ thông tin tài khoản ngân hàng");
       return;
     }
@@ -1258,6 +1290,8 @@ export default function HomeScreen() {
         },
         body: JSON.stringify({
           amount: withdrawAmountInput,
+          bankCode: withdrawBankCode,
+          bankName: withdrawBankName,
           bankAccountNo: bankNoInput,
           bankAccountName: bankNameInput
         })
@@ -3927,6 +3961,34 @@ export default function HomeScreen() {
                           className="w-full h-9 px-3 text-xs rounded-lg border bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 focus:outline-none"
                           required
                         />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-semibold text-slate-400 mb-1">Ngan hang nhan</label>
+                        <div className="grid grid-cols-[44px_1fr] gap-2">
+                          <div className="h-9 rounded-lg border border-slate-200 bg-white dark:bg-slate-900 dark:border-slate-800 flex items-center justify-center overflow-hidden">
+                            {withdrawBankCode ? (
+                              <img src={`https://cdn.vietqr.io/img/${sepayBanks.find((b) => (b.short_name || b.shortName || b.code) === withdrawBankCode)?.code || withdrawBankCode}.png`} alt={withdrawBankCode} className="max-h-6 max-w-9 object-contain" />
+                            ) : (
+                              <span className="text-[9px] font-bold text-slate-400">BANK</span>
+                            )}
+                          </div>
+                          <select
+                            value={withdrawBankCode}
+                            onChange={(e) => {
+                              const bank = sepayBanks.find((b) => (b.short_name || b.shortName || b.code) === e.target.value);
+                              setWithdrawBankCode(e.target.value);
+                              setWithdrawBankName(bank?.name || e.target.value);
+                            }}
+                            className="w-full h-9 px-3 text-xs rounded-lg border bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 focus:outline-none"
+                            required
+                          >
+                            <option value="">Chon ngan hang...</option>
+                            {sepayBanks.map((bank) => {
+                              const code = bank.short_name || bank.shortName || bank.code;
+                              return <option key={bank.code} value={code}>{code} - {bank.name}</option>;
+                            })}
+                          </select>
+                        </div>
                       </div>
                       <div className="grid grid-cols-2 gap-2">
                         <div>

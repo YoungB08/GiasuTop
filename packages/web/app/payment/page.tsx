@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState, useRef } from "react";
+import { Suspense, useEffect, useMemo, useState, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 
 type PaymentDetails = {
@@ -14,6 +14,15 @@ type PaymentDetails = {
   qrUrl: string;
   checkoutUrl?: string;
   checkoutFormfields?: Record<string, string>;
+};
+
+type SepayBank = {
+  name: string;
+  code: string;
+  bin?: string;
+  short_name?: string;
+  shortName?: string;
+  supported?: boolean;
 };
 
 function formatVND(value: number | string) {
@@ -50,6 +59,11 @@ function PaymentContent() {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const [countdown, setCountdown] = useState(900); // 15 minutes
+  const [banks, setBanks] = useState<SepayBank[]>([]);
+  const [selectedBankCode, setSelectedBankCode] = useState("");
+  const [qrTemplate, setQrTemplate] = useState<"" | "compact" | "qronly" | "standee">("compact");
+  const [showQrInfo, setShowQrInfo] = useState(true);
+  const [showFullAccount, setShowFullAccount] = useState(false);
 
   const notifyPaymentCompleted = () => {
     if (!appointmentId || typeof window === "undefined") return;
@@ -65,6 +79,20 @@ function PaymentContent() {
     const t = tokenParam || (typeof window !== "undefined" ? localStorage.getItem("token") : null);
     setToken(t);
   }, [tokenParam]);
+
+  useEffect(() => {
+    const loadBanks = async () => {
+      try {
+        const res = await fetch("http://localhost:5000/api/payments/sepay/banks");
+        const json = await res.json();
+        const list = json.data?.data || json.data?.banks || json.data || [];
+        if (Array.isArray(list)) setBanks(list);
+      } catch {
+        // Bank list is only for nicer QR controls; payment can still continue.
+      }
+    };
+    loadBanks();
+  }, []);
 
   // Check redirected status from SePay
   useEffect(() => {
@@ -121,6 +149,7 @@ function PaymentContent() {
         if (json.success && json.data) {
           setPaymentDetails(json.data);
           setApptInfo(json.data.appointment || null);
+          setSelectedBankCode(json.data.bankCode || "");
           startPolling(json.data.paymentId, !!topupId);
         } else {
           setError(json.message || "Không thể tạo mã QR. Vui lòng thử lại.");
@@ -197,6 +226,27 @@ function PaymentContent() {
   };
 
   const countdownDisplay = `${String(Math.floor(countdown / 60)).padStart(2, "0")}:${String(countdown % 60).padStart(2, "0")}`;
+  const supportedBanks = banks.filter((bank) => bank.supported !== false);
+  const selectedBank = supportedBanks.find((bank) => {
+    const shortName = bank.short_name || bank.shortName || "";
+    const selected = selectedBankCode || paymentDetails?.bankCode || "";
+    return bank.code === selected || shortName === selected;
+  });
+  const selectedBankLogo = selectedBank ? `https://cdn.vietqr.io/img/${selectedBank.code}.png` : "";
+  const displayQrUrl = useMemo(() => {
+    if (!paymentDetails) return "";
+    const q = new URLSearchParams();
+    q.set("bank", selectedBankCode || paymentDetails.bankCode);
+    q.set("acc", paymentDetails.accountNumber);
+    q.set("amount", String(Math.round(Number(paymentDetails.amount || 0))));
+    q.set("des", paymentDetails.description);
+    if (qrTemplate) q.set("template", qrTemplate);
+    q.set("showinfo", String(showQrInfo));
+    q.set("fullacc", String(showFullAccount));
+    if (paymentDetails.accountName) q.set("holder", paymentDetails.accountName);
+    q.set("store", "GiasuTop");
+    return `https://qr.sepay.vn/img?${q.toString()}`;
+  }, [paymentDetails, selectedBankCode, qrTemplate, showQrInfo, showFullAccount]);
 
   // ─── Loading ─────────────────────────────────────────────────────────────────
   if (loading) {
@@ -325,12 +375,69 @@ function PaymentContent() {
               <h2 className="text-slate-900 font-bold text-base mt-0.5">Chuyển khoản VietQR</h2>
             </div>
 
+            <div className="mb-4 space-y-2 rounded-xl border border-slate-100 bg-slate-50 p-3">
+              <div className="grid grid-cols-[44px_1fr] gap-2">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white border border-slate-100 overflow-hidden">
+                  {selectedBankLogo ? (
+                    <img src={selectedBankLogo} alt={selectedBank?.short_name || selectedBank?.code || "Bank"} className="max-h-7 max-w-8 object-contain" />
+                  ) : (
+                    <span className="text-[10px] font-bold text-[#13519c]">BANK</span>
+                  )}
+                </div>
+                <select
+                  value={selectedBankCode || paymentDetails?.bankCode || ""}
+                  onChange={(e) => setSelectedBankCode(e.target.value)}
+                  className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 outline-none focus:border-[#13519c]"
+                >
+                  {supportedBanks.length === 0 && paymentDetails?.bankCode && (
+                    <option value={paymentDetails.bankCode}>{paymentDetails.bankCode}</option>
+                  )}
+                  {supportedBanks.map((bank) => {
+                    const label = bank.short_name || bank.shortName || bank.code;
+                    return (
+                      <option key={bank.code} value={label}>
+                        {label} - {bank.name}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <select
+                  value={qrTemplate}
+                  onChange={(e) => setQrTemplate(e.target.value as typeof qrTemplate)}
+                  className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-semibold text-slate-700 outline-none"
+                >
+                  <option value="">Mặc định</option>
+                  <option value="compact">Compact</option>
+                  <option value="qronly">QR Only</option>
+                  <option value="standee">Standee</option>
+                </select>
+                <div className="grid grid-cols-2 gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setShowQrInfo((prev) => !prev)}
+                    className={`h-9 rounded-lg text-[10px] font-bold transition ${showQrInfo ? "bg-[#13519c] text-white" : "bg-white text-slate-500 border border-slate-200"}`}
+                  >
+                    Info
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowFullAccount((prev) => !prev)}
+                    className={`h-9 rounded-lg text-[10px] font-bold transition ${showFullAccount ? "bg-emerald-600 text-white" : "bg-white text-slate-500 border border-slate-200"}`}
+                  >
+                    Full STK
+                  </button>
+                </div>
+              </div>
+            </div>
+
             {/* QR Image */}
             <div className="flex justify-center mb-4">
               <div className="relative p-2 border-2 border-[#13519c]/20 rounded-xl">
-                {paymentDetails?.qrUrl ? (
+                {displayQrUrl ? (
                   <img
-                    src={paymentDetails.qrUrl}
+                    src={displayQrUrl}
                     alt="VietQR Code"
                     className="w-52 h-52 object-contain"
                   />
@@ -350,7 +457,7 @@ function PaymentContent() {
             {/* Bank Info */}
             <div className="space-y-2.5">
               {[
-                { label: "Ngân hàng", value: paymentDetails?.bankCode, key: "bank" },
+                { label: "Ngân hàng", value: selectedBankCode || paymentDetails?.bankCode, key: "bank" },
                 { label: "Số tài khoản", value: paymentDetails?.accountNumber, key: "acc", mono: true },
                 { label: "Chủ tài khoản", value: paymentDetails?.accountName, key: "name" },
               ].map((item) => (

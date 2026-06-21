@@ -187,6 +187,14 @@ async function runStartupMigration() {
       console.log("Adding documents downloads index...");
       await pool.query("ALTER TABLE documents ADD INDEX idx_documents_downloads (is_approved, download_count, created_at, id)");
     }
+    if (!(await columnExists("withdraw_requests", "bank_code"))) {
+      console.log("Adding bank_code column to withdraw_requests...");
+      await pool.query("ALTER TABLE withdraw_requests ADD COLUMN bank_code VARCHAR(32) NULL AFTER amount");
+    }
+    if (!(await columnExists("withdraw_requests", "bank_name"))) {
+      console.log("Adding bank_name column to withdraw_requests...");
+      await pool.query("ALTER TABLE withdraw_requests ADD COLUMN bank_name VARCHAR(190) NULL AFTER bank_code");
+    }
     const [walletLedgerRefCol]: any = await pool.query("SHOW COLUMNS FROM wallet_ledger LIKE 'ref_id'");
     if (walletLedgerRefCol.length > 0 && !walletLedgerRefCol[0].Type.toLowerCase().includes("255")) {
       console.log("Extending wallet_ledger.ref_id to VARCHAR(255)...");

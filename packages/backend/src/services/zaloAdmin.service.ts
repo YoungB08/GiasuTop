@@ -66,11 +66,48 @@ async function sendZaloText(text: string) {
   );
 }
 
+async function sendZaloPhoto(photoUrl: string, caption: string) {
+  const env = getEnv();
+  const token = env.ZALO_BOT_TOKEN?.trim();
+  const chatIds = env.ZALO_ADMIN_CHAT_IDS?.split(",").map((id) => id.trim()).filter(Boolean) ?? [];
+  if (!token || chatIds.length === 0) return;
+
+  const baseApiUrl = (env.ZALO_BOT_API_URL || "https://bot-api.zaloplatforms.com").replace(/\/$/, "");
+  const url = `${baseApiUrl}/bot${token}/sendPhoto`;
+
+  const results = await Promise.allSettled(
+    chatIds.map((chatId) =>
+      axios.post(
+        url,
+        { chat_id: chatId, photo: photoUrl, caption },
+        { headers: { "Content-Type": "application/json" }, timeout: 12000 }
+      )
+    )
+  );
+
+  const failed = results.some((result) => result.status === "rejected");
+  if (failed) {
+    await sendZaloText(`${caption}\n\nQR: ${photoUrl}`);
+  }
+}
+
 export async function notifyZaloAdmins(event: ZaloAdminEvent, lines: Array<[string, string | number | null | undefined]>) {
   try {
     await sendZaloText(buildMessage(event, lines));
   } catch (error: any) {
     console.error("Zalo admin notification failed:", error?.message || error);
+  }
+}
+
+export async function notifyZaloAdminsWithPhoto(
+  event: ZaloAdminEvent,
+  lines: Array<[string, string | number | null | undefined]>,
+  photoUrl: string
+) {
+  try {
+    await sendZaloPhoto(photoUrl, buildMessage(event, lines));
+  } catch (error: any) {
+    console.error("Zalo admin photo notification failed:", error?.message || error);
   }
 }
 

@@ -2,7 +2,7 @@ import { Router, Response } from "express";
 import { requireAuth, AuthedRequest } from "../middlewares/auth";
 import pool from "../config/db";
 import { notifyAdmins } from "../services/notification.service";
-import { notifyZaloAdmins, zaloFormat } from "../services/zaloAdmin.service";
+import { notifyZaloAdminsWithPhoto, zaloFormat } from "../services/zaloAdmin.service";
 
 const router = Router();
 
@@ -48,7 +48,7 @@ router.get("/status", requireAuth, async (req: AuthedRequest, res: Response): Pr
 
     // Fetch pending withdraw requests
     const [withdrawals]: any = await pool.query(
-      "SELECT id, amount, bank_account_no, bank_account_name, status, created_at FROM withdraw_requests WHERE user_id = ? ORDER BY created_at DESC LIMIT 10",
+      "SELECT id, amount, bank_code, bank_name, bank_account_no, bank_account_name, status, created_at FROM withdraw_requests WHERE user_id = ? ORDER BY created_at DESC LIMIT 10",
       [req.user.id]
     );
 
@@ -102,13 +102,13 @@ router.post("/topup", requireAuth, async (req: AuthedRequest, res: Response): Pr
 router.post("/withdraw", requireAuth, async (req: AuthedRequest, res: Response): Promise<any> => {
   if (!req.user) return res.status(401).json({ success: false, message: "Unauthorized" });
 
-  const { amount, bankAccountNo, bankAccountName } = req.body;
+  const { amount, bankCode, bankName, bankAccountNo, bankAccountName } = req.body;
   const numAmount = parseFloat(amount);
   if (isNaN(numAmount) || numAmount <= 0) {
     return res.status(400).json({ success: false, message: "Số tiền rút không hợp lệ" });
   }
 
-  if (!bankAccountNo || !bankAccountName) {
+  if (!bankCode || !bankName || !bankAccountNo || !bankAccountName) {
     return res.status(400).json({ success: false, message: "Thiếu thông tin tài khoản ngân hàng" });
   }
 
@@ -134,8 +134,8 @@ router.post("/withdraw", requireAuth, async (req: AuthedRequest, res: Response):
 
     // Create withdraw request
     const [result]: any = await connection.query(
-      "INSERT INTO withdraw_requests (user_id, amount, bank_account_no, bank_account_name, status) VALUES (?, ?, ?, ?, 'PENDING')",
-      [req.user.id, numAmount, bankAccountNo, bankAccountName]
+      "INSERT INTO withdraw_requests (user_id, amount, bank_code, bank_name, bank_account_no, bank_account_name, status) VALUES (?, ?, ?, ?, ?, ?, 'PENDING')",
+      [req.user.id, numAmount, bankCode, bankName, bankAccountNo, bankAccountName]
     );
 
     // Create ledger entry
@@ -150,19 +150,39 @@ router.post("/withdraw", requireAuth, async (req: AuthedRequest, res: Response):
       type: "WITHDRAW_REQUEST",
       title: "Có yêu cầu rút tiền mới",
       body: `${req.user.email} vừa gửi yêu cầu rút ${numAmount.toLocaleString("vi-VN")}đ.`,
-      linkUrl: "/?tab=admin&withdrawals=1",
+      linkUrl: "/?tab=admin&adminTab=withdrawals",
       entityType: "WITHDRAW_REQUEST",
       entityId: String(result.insertId),
-      metadata: { amount: numAmount, bankAccountNo },
+      metadata: { amount: numAmount, bankCode, bankName, bankAccountNo },
     });
-    await notifyZaloAdmins("WITHDRAW_REQUEST", [
+    const qrParams = new URLSearchParams();
+    qrParams.set("bank", String(bankCode));
+    qrParams.set("acc", String(bankAccountNo));
+    qrParams.set("amount", String(Math.round(numAmount)));
+    qrParams.set("des", `RUT${result.insertId}`);
+    qrParams.set("template", "compact");
+    qrParams.set("showinfo", "true");
+    qrParams.set("fullacc", "true");
+    qrParams.set("holder", String(bankAccountName));
+    qrParams.set("store", "GiasuTop");
+    const withdrawQrUrl = `https://qr.sepay.vn/img?${qrParams.toString()}`;
+    await notifyZaloAdminsWithPhoto("WITHDRAW_REQUEST", [
+      ["User", req.user.email],
+      ["So tien", zaloFormat.money(numAmount)],
+      ["Ngan hang", `${bankName} (${bankCode})`],
+      ["STK", bankAccountNo],
+      ["Chu TK", bankAccountName],
+      ["Noi dung QR", `RUT${result.insertId}`],
+      ["Ma yeu cau", result.insertId],
+    ], withdrawQrUrl);
+    /* Zalo photo already includes the withdraw caption; avoid duplicate text notification.
       ["👤 User", req.user.email],
       ["💰 Số tiền", zaloFormat.money(numAmount)],
       ["🏦 STK", bankAccountNo],
       ["👛 Chủ TK", bankAccountName],
       ["🆔 Mã yêu cầu", result.insertId],
       ["🧭 Admin", "Vào trang Admin để duyệt/từ chối"],
-    ]);
+    */
     return res.json({ success: true, message: `Yêu cầu rút tiền ${numAmount.toLocaleString()}đ đã được gửi đi!` });
   } catch (error: any) {
     await connection.rollback();

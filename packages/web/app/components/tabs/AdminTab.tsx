@@ -2,7 +2,7 @@ import React from "react";
 import { getAvatarUrl } from "../../utils/avatar";
 import KntechDataTable, { Column } from "../KntechDataTable";
 
-type AdminTabKey = "dashboard" | "subjects" | "tutors" | "monitor" | "users" | "pending_docs" | "news_crud" | "notifications" | "escrow";
+type AdminTabKey = "dashboard" | "subjects" | "tutors" | "monitor" | "users" | "pending_docs" | "news_crud" | "notifications" | "escrow" | "withdrawals";
 
 type AdminTabProps = {
   adminTab: AdminTabKey;
@@ -125,6 +125,12 @@ export default function AdminTab({
   const [escrowNoteTarget, setEscrowNoteTarget] = React.useState<string | null>(null);
   const [escrowAdminNote, setEscrowAdminNote] = React.useState("");
   const [escrowToast, setEscrowToast] = React.useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [withdrawRequests, setWithdrawRequests] = React.useState<any[]>([]);
+  const [loadingWithdrawRequests, setLoadingWithdrawRequests] = React.useState(false);
+  const [decidingWithdrawId, setDecidingWithdrawId] = React.useState<number | null>(null);
+  const [rejectingWithdraw, setRejectingWithdraw] = React.useState<any | null>(null);
+  const [withdrawRejectReason, setWithdrawRejectReason] = React.useState("");
+  const [withdrawToast, setWithdrawToast] = React.useState<{ type: "success" | "error"; message: string } | null>(null);
 
   const fetchDashboardData = async () => {
     if (!token) return;
@@ -203,6 +209,68 @@ export default function AdminTab({
   React.useEffect(() => {
     if (adminTab === "escrow") {
       fetchEscrowAppointments();
+    }
+  }, [adminTab]);
+
+  const fetchWithdrawRequests = async () => {
+    if (!token) return;
+    setLoadingWithdrawRequests(true);
+    try {
+      const res = await fetch("http://localhost:5000/api/admin/withdrawals", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const json = await res.json();
+      if (json.success) {
+        setWithdrawRequests(json.data || []);
+      } else {
+        setWithdrawToast({ type: "error", message: json.message || "Khong the tai danh sach rut tien." });
+      }
+    } catch (e) {
+      console.error("Loi tai danh sach rut tien:", e);
+      setWithdrawToast({ type: "error", message: "Loi ket noi khi tai danh sach rut tien." });
+    } finally {
+      setLoadingWithdrawRequests(false);
+    }
+  };
+
+  const handleDecideWithdrawRequest = async (
+    withdrawId: number,
+    decision: "APPROVED" | "REJECTED",
+    adminNote = ""
+  ) => {
+    setDecidingWithdrawId(withdrawId);
+    try {
+      const res = await fetch("http://localhost:5000/api/admin/withdrawals/decide", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ withdrawId, decision, adminNote: adminNote || null }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        setWithdrawToast({
+          type: "success",
+          message: decision === "APPROVED" ? "Da duyet yeu cau rut tien." : "Da tu choi va hoan tien ve vi user.",
+        });
+        setRejectingWithdraw(null);
+        setWithdrawRejectReason("");
+        fetchWithdrawRequests();
+      } else {
+        setWithdrawToast({ type: "error", message: json.message || "Khong the xu ly yeu cau rut tien." });
+      }
+    } catch (e) {
+      console.error("Loi xu ly rut tien:", e);
+      setWithdrawToast({ type: "error", message: "Loi ket noi khi xu ly yeu cau rut tien." });
+    } finally {
+      setDecidingWithdrawId(null);
+    }
+  };
+
+  React.useEffect(() => {
+    if (adminTab === "withdrawals") {
+      fetchWithdrawRequests();
     }
   }, [adminTab]);
 
@@ -550,6 +618,103 @@ export default function AdminTab({
     }
   ];
 
+  const withdrawColumns: Column[] = [
+    {
+      key: "id",
+      label: "Ma YC",
+      sortable: true,
+      render: (row) => <span className="font-mono text-slate-400">#{row.id}</span>
+    },
+    {
+      key: "full_name",
+      label: "Nguoi rut",
+      sortable: true,
+      render: (row) => (
+        <div>
+          <div className="font-semibold text-slate-700 dark:text-slate-200">{row.full_name || "-"}</div>
+          <div className="text-[10px] text-slate-400 font-mono mt-0.5">{row.email}</div>
+        </div>
+      )
+    },
+    {
+      key: "amount",
+      label: "So tien",
+      sortable: true,
+      render: (row) => <span className="font-mono font-bold text-rose-600">{formatVND(row.amount)}</span>
+    },
+    {
+      key: "bank_name",
+      label: "Ngan hang",
+      sortable: true,
+      render: (row) => (
+        <div>
+          <div className="font-semibold text-slate-700 dark:text-slate-200">{row.bank_name || "-"}</div>
+          <div className="text-[10px] text-slate-400">{row.bank_code || "-"}</div>
+        </div>
+      )
+    },
+    {
+      key: "bank_account_no",
+      label: "Tai khoan",
+      sortable: true,
+      render: (row) => (
+        <div>
+          <div className="font-mono font-semibold">{row.bank_account_no}</div>
+          <div className="text-[10px] text-slate-400">{row.bank_account_name}</div>
+        </div>
+      )
+    },
+    {
+      key: "status",
+      label: "Trang thai",
+      sortable: true,
+      render: (row) => {
+        const badge =
+          row.status === "APPROVED"
+            ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+            : row.status === "REJECTED"
+            ? "bg-rose-50 text-rose-700 border-rose-200"
+            : "bg-amber-50 text-amber-700 border-amber-200";
+        const label = row.status === "APPROVED" ? "Da duyet" : row.status === "REJECTED" ? "Tu choi" : "Cho duyet";
+        return <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${badge}`}>{label}</span>;
+      }
+    },
+    {
+      key: "created_at",
+      label: "Thoi gian",
+      sortable: true,
+      render: (row) => <span>{new Date(row.created_at).toLocaleString("vi-VN")}</span>
+    },
+    {
+      key: "actions",
+      label: "Thao tac",
+      sortable: false,
+      render: (row) => (
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            disabled={row.status !== "PENDING" || decidingWithdrawId === row.id}
+            onClick={() => handleDecideWithdrawRequest(Number(row.id), "APPROVED")}
+            className="rounded bg-emerald-600 px-3 py-1.5 text-[10px] font-bold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Duyet
+          </button>
+          <button
+            type="button"
+            disabled={row.status !== "PENDING" || decidingWithdrawId === row.id}
+            onClick={() => {
+              setRejectingWithdraw(row);
+              setWithdrawRejectReason(row.admin_note || "");
+            }}
+            className="rounded bg-rose-600 px-3 py-1.5 text-[10px] font-bold text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Tu choi
+          </button>
+        </div>
+      )
+    }
+  ];
+
   return (
     <div className="space-y-6">
       {/* Sub Menu tabs */}
@@ -615,6 +780,18 @@ export default function AdminTab({
           }`}
         >
           Giữ tiền
+        </button>
+
+        <button
+          onClick={() => {
+            setAdminTab("withdrawals");
+            fetchWithdrawRequests();
+          }}
+          className={`pb-3 text-xs font-semibold px-3 cursor-pointer shrink-0 transition relative ${
+            adminTab === "withdrawals" ? "text-[#13519c] border-b-2 border-[#13519c]" : "text-slate-400 hover:text-slate-600"
+          }`}
+        >
+          Rut tien
         </button>
 
         <button
@@ -1057,6 +1234,45 @@ export default function AdminTab({
         </div>
       )}
 
+      {adminTab === "withdrawals" && (
+        <div className="bg-white dark:bg-[#111827] rounded-xl p-4 shadow-sm border border-slate-200/60 dark:border-slate-800/80 space-y-4 text-left">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h3 className="font-semibold text-sm text-slate-900 dark:text-white">Quan ly yeu cau rut tien</h3>
+              <p className="text-xs text-slate-500 mt-1">Xem day du ngan hang, so tai khoan, chu tai khoan va duyet/tu choi yeu cau rut tien.</p>
+            </div>
+            <button
+              type="button"
+              onClick={fetchWithdrawRequests}
+              className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 dark:border-slate-800 dark:text-slate-300 dark:hover:bg-slate-900"
+            >
+              Tai lai
+            </button>
+          </div>
+
+          {loadingWithdrawRequests ? (
+            <div className="py-8 text-center text-xs font-semibold text-slate-400">Dang tai danh sach yeu cau rut tien...</div>
+          ) : withdrawRequests.length === 0 ? (
+            <div className="py-8 text-center text-xs text-slate-400">Khong co yeu cau rut tien nao.</div>
+          ) : (
+            <KntechDataTable
+              columns={withdrawColumns}
+              data={withdrawRequests}
+              searchPlaceholder="Tim theo user, email, ngan hang, so tai khoan..."
+            />
+          )}
+          {withdrawToast && (
+            <div className={`rounded-lg border px-3 py-2 text-xs font-semibold ${
+              withdrawToast.type === "success"
+                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                : "border-rose-200 bg-rose-50 text-rose-700"
+            }`}>
+              {withdrawToast.message}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Sub-tab: Monitor system logs */}
       {adminTab === "monitor" && (
         <div className="space-y-4 text-xs text-left">
@@ -1130,6 +1346,43 @@ export default function AdminTab({
             data={systemUsers}
             searchPlaceholder="Tìm kiếm tài khoản..."
           />
+        </div>
+      )}
+
+      {rejectingWithdraw && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-2xl dark:border-slate-800 dark:bg-[#111827]">
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white">Ly do tu choi rut tien</h3>
+            <p className="mt-1 text-xs text-slate-500">
+              Yeu cau #{rejectingWithdraw.id} - {formatVND(rejectingWithdraw.amount)} se duoc hoan ve vi user neu tu choi.
+            </p>
+            <textarea
+              value={withdrawRejectReason}
+              onChange={(e) => setWithdrawRejectReason(e.target.value)}
+              className="mt-4 min-h-28 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-800 outline-none focus:border-rose-400 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200"
+              placeholder="Nhap ly do tu choi de gui thong bao cho user..."
+            />
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setRejectingWithdraw(null);
+                  setWithdrawRejectReason("");
+                }}
+                className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 dark:border-slate-800 dark:text-slate-300 dark:hover:bg-slate-900"
+              >
+                Huy
+              </button>
+              <button
+                type="button"
+                disabled={!withdrawRejectReason.trim() || decidingWithdrawId === rejectingWithdraw.id}
+                onClick={() => handleDecideWithdrawRequest(Number(rejectingWithdraw.id), "REJECTED", withdrawRejectReason.trim())}
+                className="rounded-lg bg-rose-600 px-4 py-2 text-xs font-bold text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Xac nhan tu choi
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

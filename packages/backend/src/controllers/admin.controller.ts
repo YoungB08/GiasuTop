@@ -2,7 +2,7 @@ import type { Response } from "express";
 import { z } from "zod";
 import pool from "../config/db";
 import type { AuthedRequest } from "../middlewares/auth";
-import { walletReleaseHolding } from "../services/wallet.service";
+import { walletRefundAvailable, walletReleaseHolding } from "../services/wallet.service";
 import fs from "fs";
 import path from "path";
 import { assertDocumentFileIsSafe } from "../utils/upload";
@@ -74,7 +74,70 @@ const DecideWithdrawSchema = z.object({
   receiptUrl: z.string().url().max(2000).optional().nullable(),
 });
 
-export async function decideWithdraw(req: AuthedRequest, res: Response) {
+export async function decideWithdraw(req: AuthedRequest, res: Response): Promise<any> {
+  const input = DecideWithdrawSchema.parse(req.body);
+  const connection = await pool.getConnection();
+  let wr: any;
+
+  try {
+    await connection.beginTransaction();
+
+    const [rows] = await connection.query("SELECT * FROM withdraw_requests WHERE id = ? LIMIT 1 FOR UPDATE", [
+      input.withdrawId,
+    ]);
+    wr = Array.isArray(rows) ? (rows as any[])[0] : undefined;
+    if (!wr) {
+      await connection.rollback();
+      return res.status(404).json({ success: false, message: "Withdraw not found" });
+    }
+    if (wr.status !== "PENDING") {
+      await connection.rollback();
+      return res.status(400).json({ success: false, message: "Already decided" });
+    }
+
+    await connection.query("UPDATE withdraw_requests SET status=?, admin_note=?, receipt_url=? WHERE id=?", [
+      input.decision,
+      input.adminNote ?? null,
+      input.receiptUrl ?? null,
+      input.withdrawId,
+    ]);
+
+    if (input.decision === "REJECTED") {
+      await walletRefundAvailable({
+        userId: wr.user_id,
+        amount: Number(wr.amount),
+        entryType: "WITHDRAW_REJECT",
+        refType: "WITHDRAW",
+        refId: `WITHDRAW-${input.withdrawId}`,
+      }, connection);
+    }
+
+    await connection.commit();
+  } catch (error: any) {
+    await connection.rollback();
+    return res.status(500).json({ success: false, message: error.message });
+  } finally {
+    connection.release();
+  }
+
+  await createNotification({
+    recipientId: wr.user_id,
+    actorId: req.user?.id ?? null,
+    type: input.decision === "APPROVED" ? "WITHDRAW_APPROVED" : "WITHDRAW_REJECTED",
+    title: input.decision === "APPROVED" ? "Yeu cau rut tien da duoc duyet" : "Yeu cau rut tien bi tu choi",
+    body: input.decision === "APPROVED"
+      ? `Yeu cau rut ${Number(wr.amount).toLocaleString("vi-VN")}d cua ban da duoc admin duyet.`
+      : `Yeu cau rut tien bi tu choi va tien da duoc hoan ve vi. ${input.adminNote ?? ""}`.trim(),
+    linkUrl: "/?tab=wallet",
+    entityType: "WITHDRAW_REQUEST",
+    entityId: String(input.withdrawId),
+    metadata: { decision: input.decision, adminNote: input.adminNote ?? null, receiptUrl: input.receiptUrl ?? null },
+  });
+
+  return res.json({ success: true });
+}
+
+async function decideWithdrawLegacy(req: AuthedRequest, res: Response) {
   const input = DecideWithdrawSchema.parse(req.body);
 
   const [rows] = await pool.query("SELECT * FROM withdraw_requests WHERE id = ? LIMIT 1", [
