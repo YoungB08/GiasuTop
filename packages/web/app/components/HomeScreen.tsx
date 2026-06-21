@@ -2954,9 +2954,9 @@ export default function HomeScreen() {
       </header>
 
       {/* MAIN CONTENT LAYOUT WITH FIXED LEFT SIDEBAR */}
-      <div className="pt-14 min-h-screen flex bg-[#f0f2f5] dark:bg-[#090b11]">
+      <div className="pt-16 min-h-screen flex bg-[#f0f2f5] dark:bg-[#090b11]" style={{ paddingTop: "80px" }}>
         {/* COLUMN 1: FIXED LEFT SIDEBAR */}
-        <aside className="hidden md:flex flex-col justify-between fixed left-0 top-14 bottom-0 w-64 bg-white dark:bg-[#111827] border-r border-slate-200/50 dark:border-slate-800 z-30 overflow-y-auto p-3 pb-14 space-y-4">
+        <aside className="hidden md:flex flex-col justify-between fixed left-0 top-14 bottom-0 w-64 bg-white dark:bg-[#111827] border-r border-slate-200/50 dark:border-slate-800 z-30 overflow-y-auto pt-6 px-3 pb-14 space-y-4">
           <div className="space-y-4">
             {activeTab === "documents" && (
               <div className="bg-white dark:bg-[#111827] rounded-xl p-3 shadow-sm border border-slate-200/50 dark:border-slate-800 space-y-3 hidden md:block text-xs">
@@ -3225,90 +3225,12 @@ export default function HomeScreen() {
                   </div>
                 )}
               </div>
-            )}pe="button"
-              onClick={() => {
-                setHomeSubTab("community");
-                setActiveTab("home");
-              }}
-              className={"w-full flex items-center justify-center md:justify-between p-2 md:px-3 md:py-2.5 rounded-xl text-xs font-semibold text-left transition cursor-pointer " + (activeTab === "home" && homeSubTab === "community"
-                ? "bg-slate-100 text-[#13519c] dark:bg-slate-800"
-                : "hover:bg-slate-50 text-slate-655 dark:text-slate-350")}
-            >
-              <div className="flex items-center gap-3">
-                <div className="h-8 w-8 rounded-full flex items-center justify-center text-white shrink-0" style={{ background: "linear-gradient(135deg, #D84315, #FF7043)" }}>
-                  <IconUser className="h-4 w-4 text-white" />
-                </div>
-                <span className="hidden md:inline">Cong dong chat</span>
-              </div>
-              <IconChevronRight className="h-3.5 w-3.5 text-slate-300 hidden md:block shrink-0" />
-            </button>
-
-            <button
-              type="button"
-              onClick={handleTutorRegisterClick}
-              className="w-full flex items-center justify-center md:justify-between p-2 md:px-3 md:py-2.5 rounded-xl text-xs font-semibold text-left transition cursor-pointer hover:bg-slate-50 text-slate-655 dark:text-slate-350"
-            >
-              <div className="flex items-center gap-3">
-                <div className="h-8 w-8 rounded-full flex items-center justify-center text-white shrink-0" style={{ background: "linear-gradient(135deg, #FF3D00, #FF8008)" }}>
-                  <IconGraduationCap className="h-4 w-4 text-white" />
-                </div>
-                <span className="hidden md:inline">Dang ky lam gia su</span>
-              </div>
-              <IconChevronRight className="h-3.5 w-3.5 text-slate-300 hidden md:block shrink-0" />
-            </button>
-
-            {user && user.role === "ADMIN" && (
-              <div className="space-y-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setActiveTab("admin");
-                    setAdminTab("subjects");
-                  }}
-                  className={"w-full flex items-center justify-center md:justify-between p-2 md:px-3 md:py-2.5 rounded-xl text-xs font-semibold text-left transition cursor-pointer " + (activeTab === "admin"
-                    ? "bg-slate-100 text-[#13519c] dark:bg-slate-800"
-                    : "hover:bg-slate-50 text-slate-650 dark:text-slate-350")}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="h-8 w-8 rounded-full flex items-center justify-center text-white shrink-0 bg-slate-800">
-                      <IconUser className="h-4 w-4 text-white" />
-                    </div>
-                    <span className="hidden md:inline">Quan tri he thong</span>
-                  </div>
-                  <IconChevronRight className={"h-3.5 w-3.5 text-slate-300 hidden md:block shrink-0 transition-transform " + (activeTab === "admin" ? "rotate-90" : "")} />
-                </button>
-
-                {activeTab === "admin" && (
-                  <div className="pl-6 space-y-1 hidden md:block border-l border-slate-200 ml-4 py-1 animate-fade-in">
-                    {[
-                      ["dashboard", "Dashboard Thong Ke"],
-                      ["tutors", "Duyet Giao Vien (" + pendingTutors.length + ")"],
-                      ["subjects", "Quan ly Mon Hoc"],
-                      ["withdrawals", "Quan ly Rut Tien"],
-                      ["notifications", "Gui Thong Bao"],
-                      ["escrow", "Quan ly Giu Tien"],
-                      ["news_crud", "Quan Ly Tin Tuc"],
-                      ["monitor", "Logs & Thong Ke"],
-                      ["users", "Quan Ly Nguoi Dung"],
-                    ].map(([tab, label]) => (
-                      <button
-                        key={tab}
-                        type="button"
-                        onClick={() => { setActiveTab("admin"); setAdminTab(tab as any); }}
-                        className={"w-full text-left px-2 py-1.5 rounded-lg text-[10px] font-semibold transition " + (activeTab === "admin" && adminTab === tab ? "bg-slate-100 text-[#13519c]" : "text-slate-500 hover:bg-slate-50")}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
             )}
           </div>
         </aside>
 
         {/* COLUMN 2: MAIN CONTENT */}
-        <main className="flex-1 md:pl-64 p-4 md:p-6 space-y-6">
+        <main className="flex-1 md:pl-[280px] pt-6 px-4 pb-4 md:pt-10 md:px-6 md:pb-6 space-y-6">
           {activeTab === "home" && (
             <HomeTab
               homeSubTab={homeSubTab}
