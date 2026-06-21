@@ -1,4 +1,5 @@
 import React from "react";
+import KntechDataTable, { Column } from "../KntechDataTable";
 
 type WalletTabProps = {
   wallet: any;
@@ -53,6 +54,51 @@ export default function WalletTab({
     };
     return labels[entryType] || entryType;
   };
+
+  const ledgerTableData = walletLedger.map((entry) => {
+    const amount = Number(entry.amount || 0);
+    const typeLabel = entry.entry_type_label || entryTypeLabel(entry.entry_type);
+    const createdAtLabel = entry.created_at ? new Date(entry.created_at).toLocaleString("vi-VN") : "";
+    return {
+      ...entry,
+      amount_number: amount,
+      amount_label: `${amount > 0 ? "+" : ""}${formatVND(amount)}`,
+      type_label: typeLabel,
+      created_at_label: createdAtLabel,
+      ref_label: entry.ref_id || entry.ref_type || "-",
+    };
+  });
+
+  const ledgerColumns: Column[] = [
+    {
+      key: "created_at_label",
+      label: "Ngay giao dich",
+      sortable: true,
+      render: (row) => <span className="font-mono text-[11px] text-slate-500">{row.created_at_label || "-"}</span>,
+    },
+    {
+      key: "type_label",
+      label: "Loai giao dich",
+      sortable: true,
+      render: (row) => <span className="font-semibold text-slate-700 dark:text-slate-200">{row.type_label}</span>,
+    },
+    {
+      key: "ref_label",
+      label: "Ma tham chieu",
+      sortable: true,
+      render: (row) => <span className="font-mono text-[11px] text-slate-500">{row.ref_label}</span>,
+    },
+    {
+      key: "amount_number",
+      label: "So tien",
+      sortable: true,
+      render: (row) => (
+        <span className={`block text-right font-mono font-bold ${row.amount_number > 0 ? "text-emerald-600" : "text-rose-600"}`}>
+          {row.amount_label}
+        </span>
+      ),
+    },
+  ];
 
   return (
     <div className="space-y-6">
@@ -179,7 +225,13 @@ export default function WalletTab({
       {/* Lịch sử giao dịch */}
       <div className="bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-sm space-y-4">
         <h3 className="text-xs font-bold uppercase tracking-wider text-slate-450">Lịch sử giao dịch ví</h3>
-        <div className="overflow-x-auto border border-slate-200/60 dark:border-slate-800 rounded-xl">
+        <KntechDataTable
+          columns={ledgerColumns}
+          data={ledgerTableData}
+          searchPlaceholder="Tim theo ngay, loai giao dich, ma tham chieu, so tien..."
+          defaultRowsPerPage={10}
+        />
+        <div className="hidden overflow-x-auto border border-slate-200/60 dark:border-slate-800 rounded-xl">
           <table className="w-full border-collapse text-left text-xs">
             <thead>
               <tr className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 text-[10px] font-bold uppercase tracking-wider text-slate-400">

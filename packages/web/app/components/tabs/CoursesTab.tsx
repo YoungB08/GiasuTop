@@ -31,9 +31,9 @@ export default function CoursesTab({
 }: CoursesTabProps) {
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="text-base font-semibold text-slate-900 dark:text-white">Đội Ngũ GiasuTop</h2>
-        <div className="relative max-w-[180px]">
+        <div className="relative w-full sm:max-w-[220px]">
           <IconSearch className="absolute left-3 top-1/2 -translate-y-1/2 h-3 w-3 text-slate-400" />
           <input
             type="text"
@@ -133,7 +133,7 @@ export default function CoursesTab({
                     <span className="text-[8px] bg-black/20 px-2 py-0.5 rounded font-bold uppercase tracking-wider">
                       GIA SƯ CHUYÊN NGHIỆP
                     </span>
-                    <span className="text-[9px] bg-white/20 px-2 py-0.5 rounded font-semibold">
+                    <span className="max-w-[48%] truncate text-right text-[9px] bg-white/20 px-2 py-0.5 rounded font-semibold">
                       ⭐️ {(4.7 + (t.full_name.charCodeAt(0) % 4) * 0.1).toFixed(1)} (
                       {(t.full_name.charCodeAt(1) % 40) + 15} đánh giá)
                     </span>
@@ -162,14 +162,14 @@ export default function CoursesTab({
                     {t.bio || "Gia sư tận tâm dạy bám sát chương trình học, giúp con củng cố kiến thức và đạt điểm tốt."}
                   </p>
 
-                  <div className="pt-3 border-t dark:border-slate-800 flex justify-between items-center">
+                  <div className="flex flex-col gap-3 border-t pt-3 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <span className="block text-[9px] uppercase font-bold text-slate-400">Học phí đề xuất</span>
                       <span className="text-sm font-bold text-rose-600">{formatVND(t.hourly_rate)}/giờ</span>
                     </div>
                     <button
                       onClick={() => setViewingTutor(t)}
-                      className="bg-[#13519c] hover:bg-blue-800 text-white font-bold text-xs px-4 h-9 rounded-lg cursor-pointer transition flex items-center justify-center"
+                      className="flex h-9 w-full items-center justify-center rounded-lg bg-[#13519c] px-4 text-xs font-bold text-white transition hover:bg-blue-800 cursor-pointer sm:w-auto"
                     >
                       Đăng ký học ngay
                     </button>

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { getAvatarUrl } from "../utils/avatar";
+import { apiUrl } from "../utils/api";
 
 interface Contact {
   id: string;
@@ -49,15 +50,13 @@ const GLOBAL_CONTACT: Contact = {
   unread_count: 0,
 };
 
-const API = "http://localhost:5000";
-
 // ── helpers ────────────────────────────────────────────────────────────────
 function isImageMime(mime: string | null | undefined) {
   return mime ? /^image\/(jpeg|png|webp|gif)/.test(mime) : false;
 }
 
 function FileAttachment({ url, name, mime }: { url: string; name: string | null; mime: string | null }) {
-  const fullUrl = url.startsWith("http") ? url : `${API}${url}`;
+  const fullUrl = url.startsWith("http") ? url : apiUrl(url);
   const label = name || "File đính kèm";
 
   if (isImageMime(mime)) {
@@ -112,7 +111,7 @@ export function MessengerChat({ token, currentUser, chatActivePartner, onClearAc
   const fetchContacts = useCallback(async () => {
     if (!token) return;
     try {
-      const res = await fetch(`${API}/api/chats/direct/contacts`, {
+      const res = await fetch(apiUrl("/api/chats/direct/contacts"), {
         headers: { Authorization: `Bearer ${token}` },
       });
       const json = await res.json();
@@ -130,7 +129,7 @@ export function MessengerChat({ token, currentUser, chatActivePartner, onClearAc
     if (showLoading) setLoadingMessages(true);
     try {
       if (partnerId === "global") {
-        const res = await fetch(`${API}/api/chats`, {
+        const res = await fetch(apiUrl("/api/chats"), {
           headers: { Authorization: `Bearer ${token}` },
         });
         const json = await res.json();
@@ -152,7 +151,7 @@ export function MessengerChat({ token, currentUser, chatActivePartner, onClearAc
           setMessages(mapped);
         }
       } else {
-        const res = await fetch(`${API}/api/chats/direct/partner/${partnerId}`, {
+        const res = await fetch(apiUrl(`/api/chats/direct/partner/${partnerId}`), {
           headers: { Authorization: `Bearer ${token}` },
         });
         const json = await res.json();
@@ -181,7 +180,7 @@ export function MessengerChat({ token, currentUser, chatActivePartner, onClearAc
 
     try {
       if (activeContact.id === "global") {
-        const res = await fetch(`${API}/api/chats`, {
+        const res = await fetch(apiUrl("/api/chats"), {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
           body: JSON.stringify(body),
@@ -193,7 +192,7 @@ export function MessengerChat({ token, currentUser, chatActivePartner, onClearAc
         }
       } else {
         body.receiverId = activeContact.id;
-        const res = await fetch(`${API}/api/chats/direct/send`, {
+        const res = await fetch(apiUrl("/api/chats/direct/send"), {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
           body: JSON.stringify(body),
@@ -234,7 +233,7 @@ export function MessengerChat({ token, currentUser, chatActivePartner, onClearAc
     try {
       const form = new FormData();
       form.append("file", file);
-      const res = await fetch(`${API}/api/chats/upload`, {
+      const res = await fetch(apiUrl("/api/chats/upload"), {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
         body: form,

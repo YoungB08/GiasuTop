@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import { z } from "zod";
 import pool from "../config/db";
 import { getEnv } from "../utils/env";
+import { publicWebUrl } from "../utils/url";
 import { walletHoldToTutor } from "../services/wallet.service";
 import { getSePayClient } from "../config/sepay";
 import { createNotification, createNotifications } from "../services/notification.service";
@@ -277,14 +278,14 @@ export async function createAppointmentQr(req: Request, res: Response) {
       currency: "VND",
       order_description: `Thanh toan hoc phi ${des}`,
       success_url: apptId 
-        ? `http://localhost:3000/payment?status=success&appointmentId=${apptId}&paymentId=${des.replace(/\D/g, "")}`
-        : `http://localhost:3000/payment?status=success&topupId=${topupId}&paymentId=${topupId}`,
+        ? publicWebUrl(`/payment?status=success&appointmentId=${apptId}&paymentId=${des.replace(/\D/g, "")}`)
+        : publicWebUrl(`/payment?status=success&topupId=${topupId}&paymentId=${topupId}`),
       cancel_url: apptId
-        ? `http://localhost:3000/payment?status=cancelled&appointmentId=${apptId}&paymentId=${des.replace(/\D/g, "")}`
-        : `http://localhost:3000/payment?status=cancelled&topupId=${topupId}&paymentId=${topupId}`,
+        ? publicWebUrl(`/payment?status=cancelled&appointmentId=${apptId}&paymentId=${des.replace(/\D/g, "")}`)
+        : publicWebUrl(`/payment?status=cancelled&topupId=${topupId}&paymentId=${topupId}`),
       error_url: apptId
-        ? `http://localhost:3000/payment?status=error&appointmentId=${apptId}&paymentId=${des.replace(/\D/g, "")}`
-        : `http://localhost:3000/payment?status=error&topupId=${topupId}&paymentId=${topupId}`,
+        ? publicWebUrl(`/payment?status=error&appointmentId=${apptId}&paymentId=${des.replace(/\D/g, "")}`)
+        : publicWebUrl(`/payment?status=error&topupId=${topupId}&paymentId=${topupId}`),
     });
   } catch (e: any) {
     console.error("SePay SDK error:", e.message);

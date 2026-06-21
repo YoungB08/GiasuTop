@@ -8,11 +8,12 @@ import path from "path";
 import { assertDocumentFileIsSafe } from "../utils/upload";
 import { createNotification, createNotifications } from "../services/notification.service";
 import { notifyZaloAdmins } from "../services/zaloAdmin.service";
+import { publicApiUrl } from "../utils/url";
 
 
 export async function listPendingTutors(_req: AuthedRequest, res: Response) {
   const [rows]: any = await pool.query(
-    "SELECT tp.user_id, tp.bio, tp.school, tp.major, tp.year_of_study, tp.hourly_rate, tp.subjects_to_teach, tp.is_verified, u.full_name, u.email, u.phone, u.avatar_url, tp.reject_reason, tp.commission_percent, tp.proposed_commission_percent FROM tutor_profiles tp JOIN users u ON u.id = tp.user_id WHERE tp.is_verified = 'PENDING' ORDER BY tp.created_at DESC"
+    "SELECT tp.user_id, tp.bio, tp.school, tp.major, tp.year_of_study, tp.hourly_rate, tp.subjects_to_teach, tp.is_verified, u.full_name, u.email, u.phone, u.avatar_url, tp.reject_reason, tp.commission_percent, tp.proposed_commission_percent, tp.ekyc_status, tp.ekyc_score, tp.ekyc_result FROM tutor_profiles tp JOIN users u ON u.id = tp.user_id WHERE tp.is_verified = 'PENDING' AND (tp.teaching_profile_completed_at IS NOT NULL OR (COALESCE(tp.school, '') <> '' AND COALESCE(tp.major, '') <> '' AND COALESCE(tp.bio, '') <> '' AND COALESCE(tp.subjects_to_teach, '') <> '')) ORDER BY tp.created_at DESC"
   );
   
   for (const t of rows) {
@@ -576,7 +577,27 @@ export async function deleteNews(req: AuthedRequest, res: Response): Promise<any
 
 // Documents endpoints
 export async function listDocuments(req: any, res: Response): Promise<any> {
-  const { grade, type, subject, search } = req.query;
+  const decodeFilterText = (value: unknown) => {
+    const raw = String(value ?? "").trim();
+    if (!raw) return "";
+    if (/[ÃÄÆ]|áº|á»|â/.test(raw)) {
+      try {
+        return Buffer.from(raw, "latin1").toString("utf8").trim();
+      } catch {
+        return raw;
+      }
+    }
+    return raw;
+  };
+  const normalizeFilter = (value: string) => value.trim().replace(/\s+/g, " ").toLowerCase();
+  const isAllFilter = (value: string) => {
+    const normalized = normalizeFilter(value);
+    return !normalized || normalized === "all" || normalized === "tat ca" || normalized === "tất cả";
+  };
+  const grade = decodeFilterText(req.query.grade);
+  const type = decodeFilterText(req.query.type);
+  const subject = decodeFilterText(req.query.subject);
+  const search = decodeFilterText(req.query.search);
   try {
     const requestedPage = Number.parseInt(String(req.query.page || "1"), 10);
     const requestedPageSize = Number.parseInt(String(req.query.pageSize || "12"), 10);
@@ -585,6 +606,9 @@ export async function listDocuments(req: any, res: Response): Promise<any> {
     const sort = String(req.query.sort || "newest");
     const orderByMap: Record<string, string> = {
       newest: "created_at DESC, id DESC",
+      time: "created_at DESC, id DESC",
+      time_desc: "created_at DESC, id DESC",
+      time_asc: "created_at ASC, id ASC",
       oldest: "created_at ASC, id ASC",
       downloads: "download_count DESC, created_at DESC, id DESC",
       title: "title ASC, created_at DESC, id DESC",
@@ -594,17 +618,17 @@ export async function listDocuments(req: any, res: Response): Promise<any> {
     let sql = "WHERE is_approved = 'APPROVED'";
     const params: any[] = [];
     
-    if (grade && grade !== "Tất cả") {
-      sql += " AND grade_tag = ?";
-      params.push(grade);
+    if (!isAllFilter(grade)) {
+      sql += " AND LOWER(TRIM(grade_tag)) = ?";
+      params.push(normalizeFilter(grade));
     }
-    if (type && type !== "Tất cả") {
-      sql += " AND type_tag = ?";
-      params.push(type);
+    if (!isAllFilter(type)) {
+      sql += " AND LOWER(TRIM(type_tag)) = ?";
+      params.push(normalizeFilter(type));
     }
-    if (subject && subject !== "Tất cả") {
-      sql += " AND subject_tag = ?";
-      params.push(subject);
+    if (!isAllFilter(subject)) {
+      sql += " AND LOWER(TRIM(subject_tag)) = ?";
+      params.push(normalizeFilter(subject));
     }
     if (search) {
       sql += " AND (title LIKE ? OR uploader_name LIKE ?)";
@@ -645,7 +669,16 @@ export async function listDocuments(req: any, res: Response): Promise<any> {
 export function decodeMultipartString(val: string | undefined | null): string {
   if (!val) return "";
   try {
-    return Buffer.from(val, "latin1").toString("utf8");
+    for (let i = 0; i < val.length; i++) {
+      if (val.charCodeAt(i) > 255) {
+        return val;
+      }
+    }
+    const decoded = Buffer.from(val, "latin1").toString("utf8");
+    if (decoded.includes("\uFFFD") && !val.includes("\uFFFD")) {
+      return val;
+    }
+    return decoded;
   } catch (e) {
     return val;
   }
@@ -660,7 +693,7 @@ export async function uploadDocument(req: AuthedRequest, res: Response): Promise
   const title = decodeMultipartString(req.body.title);
   const gradeTag = decodeMultipartString(req.body.gradeTag);
   const typeTag = decodeMultipartString(req.body.typeTag);
-  const subjectTag = decodeMultipartString(req.body.subjectTag);
+  let subjectTag = decodeMultipartString(req.body.subjectTag);
   const uploaderId = req.user!.id;
   
   let uploaderName = req.user!.email.split('@')[0];
@@ -681,20 +714,31 @@ export async function uploadDocument(req: AuthedRequest, res: Response): Promise
   }
 
   // 2. Validate grade tag (Lớp 1-12)
-  const gradeMatch = gradeTag ? gradeTag.match(/^Lớp (\d+)$/) : null;
-  const gradeNum = gradeMatch ? parseInt(gradeMatch[1], 10) : -1;
-  if (gradeNum < 1 || gradeNum > 12) {
+  const gradeNum = gradeTag ? parseInt(gradeTag.replace(/\D/g, ""), 10) : -1;
+  if (isNaN(gradeNum) || gradeNum < 1 || gradeNum > 12) {
     await fs.promises.rm(file.path, { force: true });
     return res.status(400).json({ success: false, message: "Khối lớp được chọn phải từ Lớp 1 đến Lớp 12." });
   }
 
   // 3. Validate subject (managed by Admin)
   try {
-    const [subRows]: any = await pool.query("SELECT * FROM subjects WHERE name = ?", [subjectTag]);
-    if (!subRows || subRows.length === 0) {
+    const rawSubjectTag = req.body.subjectTag || "";
+    const decodedSubjectTag = subjectTag || "";
+    const [subRows]: any = await pool.query("SELECT * FROM subjects");
+    const normRaw = rawSubjectTag.trim().toLowerCase().normalize("NFC");
+    const normDecoded = decodedSubjectTag.trim().toLowerCase().normalize("NFC");
+
+    const matchedSubject = subRows.find((sub: any) => {
+      const normDb = sub.name.trim().toLowerCase().normalize("NFC");
+      return normDb === normRaw || normDb === normDecoded;
+    });
+
+    if (!matchedSubject) {
       await fs.promises.rm(file.path, { force: true });
       return res.status(400).json({ success: false, message: "Môn học không hợp lệ hoặc không được quản lý bởi admin." });
     }
+    // Reassign to canonical name from database
+    subjectTag = matchedSubject.name;
   } catch (dbErr: any) {
     await fs.promises.rm(file.path, { force: true });
     return res.status(500).json({ success: false, message: dbErr.message });
@@ -709,7 +753,7 @@ export async function uploadDocument(req: AuthedRequest, res: Response): Promise
   }
 
   const isApproved = role === "ADMIN" ? "APPROVED" : "PENDING";
-  const fileUrl = `http://localhost:5000/uploads/docs/${file.filename}`;
+  const fileUrl = publicApiUrl(`/uploads/docs/${file.filename}`);
 
   try {
     const [result]: any = await pool.query(
@@ -968,5 +1012,3 @@ export async function getDashboardDetails(req: AuthedRequest, res: Response): Pr
     return res.status(500).json({ success: false, message: error.message });
   }
 }
-
-

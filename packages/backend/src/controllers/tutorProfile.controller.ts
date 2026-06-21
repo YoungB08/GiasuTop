@@ -4,9 +4,9 @@ import { z } from "zod";
 import pool from "../config/db";
 import type { AuthedRequest } from "../middlewares/auth";
 import { assertUploadedFilesAreSafe, getTutorPrivateUploadPath } from "../utils/upload";
-import { decodeMultipartString } from "./admin.controller";
 import { notifyAdmins } from "../services/notification.service";
 import { notifyZaloAdmins, zaloFormat } from "../services/zaloAdmin.service";
+import { EKYC_AUTO_ACCEPT_THRESHOLD, parseEkycPayload } from "../services/ekyc.service";
 
 
 
@@ -60,17 +60,46 @@ function normalizeDocumentRows(req: AuthedRequest, docs: any[]) {
   }));
 }
 
+function hasCompletedTeachingProfile(profile: any) {
+  if (!profile) return false;
+  if (profile.teaching_profile_completed_at) return true;
+  return Boolean(
+    String(profile.school || "").trim() &&
+      String(profile.major || "").trim() &&
+      String(profile.bio || "").trim() &&
+      String(profile.subjects_to_teach || "").trim() &&
+      Number(profile.hourly_rate || 0) > 0
+  );
+}
+
+function hasSubmittedIdentity(profile: any, docs: any[] = []) {
+  if (profile?.identity_submitted_at) return true;
+  const docTypes = new Set(docs.map((doc) => doc.doc_type));
+  return docTypes.has("CCCD_FRONT") && docTypes.has("CCCD_BACK") && docTypes.has("PORTRAIT");
+}
+
+function tutorRegistrationStep(profile: any, docs: any[] = []) {
+  if (!hasSubmittedIdentity(profile, docs) || profile?.is_verified === "REJECTED") return "IDENTITY";
+  if (!hasCompletedTeachingProfile(profile)) return "TEACHING_PROFILE";
+  if (profile?.is_verified === "PENDING") return "PENDING_REVIEW";
+  return "COMPLETED";
+}
+
 export async function upsertMyTutorProfile(req: AuthedRequest, res: Response): Promise<any> {
   if (!requireTutor(req, res)) return;
 
   const [profileRows]: any = await pool.query(
-    "SELECT is_verified, year_of_study, hourly_rate, proposed_commission_percent, commission_percent, bio, school, major, subjects_to_teach FROM tutor_profiles WHERE user_id = ?",
+    "SELECT is_verified, year_of_study, hourly_rate, proposed_commission_percent, commission_percent, bio, school, major, subjects_to_teach, ekyc_status, ekyc_score, identity_submitted_at, teaching_profile_completed_at FROM tutor_profiles WHERE user_id = ?",
     [req.user!.id]
   );
  
   const profile = profileRows[0];
   const currentStatus = profile?.is_verified;
-  if (!currentStatus || currentStatus === "REJECTED") {
+  const [identityDocs]: any = await pool.query(
+    "SELECT doc_type FROM tutor_documents WHERE tutor_user_id = ? AND doc_type IN ('CCCD_FRONT','CCCD_BACK','PORTRAIT')",
+    [req.user!.id]
+  );
+  if (!currentStatus || currentStatus === "REJECTED" || !hasSubmittedIdentity(profile, identityDocs)) {
     return res.status(403).json({
       success: false,
       message: "Hồ sơ của bạn chưa được gửi xác minh. Vui lòng gửi tài liệu CCCD trước.",
@@ -82,10 +111,14 @@ export async function upsertMyTutorProfile(req: AuthedRequest, res: Response): P
     ? input.subjectsToTeach.map((s: string) => s.trim()).filter(Boolean).join(",")
     : null;
   const proposedPercent = input.proposedPercent ?? null;
+  const isFirstTeachingProfile = !hasCompletedTeachingProfile(profile);
+  const autoAcceptedIdentity = profile.ekyc_status === "AUTO_ACCEPTED" && Number(profile.ekyc_score || 0) >= EKYC_AUTO_ACCEPT_THRESHOLD;
  
   // Only reset to PENDING if there are changes to fields from their current values
   let shouldResetStatus = false;
-  if (currentStatus === "APPROVED") {
+  if (isFirstTeachingProfile) {
+    shouldResetStatus = !autoAcceptedIdentity;
+  } else if (currentStatus === "APPROVED") {
     const isYearDiff = input.yearOfStudy !== undefined && input.yearOfStudy !== null && input.yearOfStudy !== profile.year_of_study;
     const isRateDiff = input.hourlyRate !== undefined && input.hourlyRate !== null && Number(input.hourlyRate) !== Number(profile.hourly_rate);
     const isCommissionDiff = proposedPercent !== null && 
@@ -103,7 +136,7 @@ export async function upsertMyTutorProfile(req: AuthedRequest, res: Response): P
     shouldResetStatus = true;
   }
  
-  const newStatus = shouldResetStatus ? "PENDING" : currentStatus;
+  const newStatus = autoAcceptedIdentity && isFirstTeachingProfile ? "APPROVED" : shouldResetStatus ? "PENDING" : currentStatus;
  
   await pool.query(
     "UPDATE tutor_profiles SET " +
@@ -115,7 +148,9 @@ export async function upsertMyTutorProfile(req: AuthedRequest, res: Response): P
       "subjects_to_teach = COALESCE(?, subjects_to_teach), " +
       "card_gradient = COALESCE(?, card_gradient), " +
       "is_verified = ?, " +
-      "proposed_commission_percent = COALESCE(?, proposed_commission_percent) " +
+      "commission_percent = CASE WHEN ? = 'APPROVED' THEN COALESCE(?, commission_percent) ELSE commission_percent END, " +
+      "proposed_commission_percent = CASE WHEN ? = 'APPROVED' THEN NULL ELSE COALESCE(?, proposed_commission_percent) END, " +
+      "teaching_profile_completed_at = COALESCE(teaching_profile_completed_at, NOW()) " +
       "WHERE user_id = ?",
     [
       input.bio ?? null,
@@ -126,12 +161,15 @@ export async function upsertMyTutorProfile(req: AuthedRequest, res: Response): P
       subjectsCsv,
       input.cardGradient ?? null,
       newStatus,
+      newStatus,
+      proposedPercent,
+      newStatus,
       proposedPercent,
       req.user!.id,
     ]
   );
 
-  if (shouldResetStatus) {
+  if (newStatus === "PENDING") {
     await notifyAdmins({
       actorId: req.user!.id,
       type: "SYSTEM",
@@ -150,16 +188,37 @@ export async function upsertMyTutorProfile(req: AuthedRequest, res: Response): P
       ["💎 Chiết khấu đề xuất", proposedPercent !== null ? `${proposedPercent}%` : null],
       ["🆔 User ID", req.user!.id],
     ]);
+  } else if (autoAcceptedIdentity && isFirstTeachingProfile) {
+    await notifyAdmins({
+      actorId: req.user!.id,
+      type: "SYSTEM",
+      title: "Gia sÆ° Ä‘Æ°á»£c eKYC tá»± Ä‘á»™ng duyá»‡t",
+      body: `${req.user!.email} Ä‘áº¡t eKYC ${Number(profile.ekyc_score || 0)}% vÃ  Ä‘Ã£ hoÃ n táº¥t há»“ sÆ¡ dáº¡y há»c.`,
+      linkUrl: "/?tab=admin&tutors=1",
+      entityType: "TUTOR_PROFILE",
+      entityId: req.user!.id,
+      metadata: { ekycScore: Number(profile.ekyc_score || 0) },
+    });
   }
  
-  return res.json({ success: true, message: shouldResetStatus ? "Cập nhật hồ sơ dạy học thành công. Vui lòng chờ admin phê duyệt lại để hiển thị." : "Cập nhật hồ sơ thành công." });
+  return res.json({
+    success: true,
+    message: newStatus === "APPROVED" ? "Hồ sơ dạy học đã hoàn tất và được eKYC tự động phê duyệt." : "Cập nhật hồ sơ dạy học thành công. Vui lòng chờ admin phê duyệt.",
+    data: {
+      is_verified: newStatus,
+      autoApproved: newStatus === "APPROVED" && autoAcceptedIdentity,
+      identity_submitted: true,
+      teaching_profile_completed: true,
+      registration_step: newStatus === "PENDING" ? "PENDING_REVIEW" : "COMPLETED",
+    },
+  });
 }
 
 export async function getMyTutorStatus(req: AuthedRequest, res: Response): Promise<any> {
   if (!requireTutor(req, res)) return;
 
   const [rows]: any = await pool.query(
-    "SELECT is_verified, reject_reason, school, major, year_of_study, hourly_rate, subjects_to_teach, card_gradient, bio FROM tutor_profiles WHERE user_id = ?",
+    "SELECT is_verified, reject_reason, school, major, year_of_study, hourly_rate, subjects_to_teach, card_gradient, bio, commission_percent, proposed_commission_percent, ekyc_status, ekyc_score, ekyc_result, identity_submitted_at, teaching_profile_completed_at FROM tutor_profiles WHERE user_id = ?",
     [req.user!.id]
   );
 
@@ -174,16 +233,26 @@ export async function getMyTutorStatus(req: AuthedRequest, res: Response): Promi
       data: {
         is_verified: "NOT_SUBMITTED",
         reject_reason: null,
+        identity_submitted: false,
+        teaching_profile_completed: false,
+        registration_step: "IDENTITY",
         documents: normalizeDocumentRows(req, docs),
       },
     });
   }
 
+  const profile = rows[0];
+  const identitySubmitted = hasSubmittedIdentity(profile, docs);
+  const teachingProfileCompleted = hasCompletedTeachingProfile(profile);
+
   return res.json({
     success: true,
     data: {
-      ...rows[0],
-      subjects_to_teach: rows[0].subjects_to_teach ? rows[0].subjects_to_teach.split(",") : [],
+      ...profile,
+      subjects_to_teach: profile.subjects_to_teach ? profile.subjects_to_teach.split(",") : [],
+      identity_submitted: identitySubmitted,
+      teaching_profile_completed: teachingProfileCompleted,
+      registration_step: tutorRegistrationStep(profile, docs),
       documents: normalizeDocumentRows(req, docs),
     },
   });
@@ -210,10 +279,12 @@ export async function uploadMyTutorDocuments(req: AuthedRequest, res: Response):
   const certificates = files.certificates ?? [];
 
   const [profileRows]: any = await pool.query(
-    "SELECT is_verified FROM tutor_profiles WHERE user_id = ?",
+    "SELECT is_verified, school, major, bio, subjects_to_teach, hourly_rate, teaching_profile_completed_at FROM tutor_profiles WHERE user_id = ?",
     [req.user!.id]
   );
-  const currentStatus = profileRows[0]?.is_verified || "NOT_SUBMITTED";
+  const existingProfile = profileRows[0];
+  const currentStatus = existingProfile?.is_verified || "NOT_SUBMITTED";
+  let uploadedIdentityStep = false;
 
   const connection = await pool.getConnection();
   try {
@@ -222,11 +293,11 @@ export async function uploadMyTutorDocuments(req: AuthedRequest, res: Response):
     if (currentStatus === "APPROVED") {
       // Phase 2: Upload certificates only
       if (certificates.length === 0) {
-        connection.release();
+        await connection.rollback();
         return res.status(400).json({ success: false, message: "Vui lòng chọn ít nhất một chứng chỉ/bằng cấp để tải lên." });
       }
       if (certificates.length > 5) {
-        connection.release();
+        await connection.rollback();
         return res.status(400).json({ success: false, message: "Tối đa 5 chứng chỉ." });
       }
 
@@ -257,7 +328,7 @@ export async function uploadMyTutorDocuments(req: AuthedRequest, res: Response):
     } else {
       // Phase 1: Upload identity documents (Portrait, CCCD Front, CCCD Back)
       if (!cccdFront || !cccdBack || !portrait) {
-        connection.release();
+        await connection.rollback();
         return res.status(400).json({
           success: false,
           message: "Vui lòng tải lên đầy đủ CCCD mặt trước, mặt sau và ảnh chân dung để xác minh danh tính.",
@@ -266,6 +337,22 @@ export async function uploadMyTutorDocuments(req: AuthedRequest, res: Response):
 
       const allFiles = [cccdFront, cccdBack, portrait];
       await assertUploadedFilesAreSafe(allFiles);
+
+      const ekycPayload = parseEkycPayload(req.body.ekycResult);
+      const ekycVerification = (ekycPayload as any)?.verification || ekycPayload;
+      const ekycScore = Number((ekycVerification as any)?.scores?.overall ?? 0);
+      if (!ekycPayload || !(ekycVerification as any)?.status || !Number.isFinite(ekycScore) || ekycScore <= 0) {
+        await connection.rollback();
+        return res.status(400).json({
+          success: false,
+          message: "Vui lòng hoàn tất eKYC tự động trước khi gửi bước 1.",
+        });
+      }
+      const autoApproved = (ekycVerification as any)?.status === "approved" && ekycScore >= EKYC_AUTO_ACCEPT_THRESHOLD;
+      const nextStatus = hasCompletedTeachingProfile(existingProfile) && autoApproved ? "APPROVED" : "PENDING";
+      const ekycStatus = autoApproved ? "AUTO_ACCEPTED" : "MANUAL_REVIEW";
+      const ekycResultJson = JSON.stringify(ekycPayload);
+      uploadedIdentityStep = true;
 
       const inserts: Array<[string, z.infer<typeof DocTypeSchema>, string, string, string, string, number]> = [];
       const add = (docType: z.infer<typeof DocTypeSchema>, file: Express.Multer.File) => {
@@ -292,43 +379,26 @@ export async function uploadMyTutorDocuments(req: AuthedRequest, res: Response):
         inserts.flat()
       );
 
-      const bio = decodeMultipartString(req.body.bio ?? "");
-      const school = decodeMultipartString(req.body.school ?? "");
-      const major = decodeMultipartString(req.body.major ?? "");
-      const yearOfStudy = decodeMultipartString(req.body.yearOfStudy ?? "Sinh viên năm 1");
-      const hourlyRate = req.body.hourlyRate ? Number(req.body.hourlyRate) : 150000;
-      let subjectsCSV = "";
-      if (req.body.subjectsToTeach) {
-        try {
-          const parsed = JSON.parse(req.body.subjectsToTeach);
-          if (Array.isArray(parsed)) {
-            subjectsCSV = parsed.join(",");
-          } else {
-            subjectsCSV = String(req.body.subjectsToTeach);
-          }
-        } catch {
-          subjectsCSV = String(req.body.subjectsToTeach);
-        }
-      }
-      const cardGradient = req.body.cardGradient ?? "bg-gradient-to-r from-blue-600 via-indigo-600 to-[#13519c]";
-      const proposedPercent = req.body.proposedPercent ? Number(req.body.proposedPercent) : 10.00;
-
       await connection.query(
-        "INSERT INTO tutor_profiles (user_id, bio, school, major, year_of_study, hourly_rate, subjects_to_teach, card_gradient, is_verified, reject_reason, proposed_commission_percent) " +
-          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', NULL, ?) " +
-          "ON DUPLICATE KEY UPDATE bio=VALUES(bio), school=VALUES(school), major=VALUES(major), year_of_study=VALUES(year_of_study), hourly_rate=VALUES(hourly_rate), subjects_to_teach=VALUES(subjects_to_teach), card_gradient=VALUES(card_gradient), is_verified='PENDING', reject_reason=NULL, proposed_commission_percent=VALUES(proposed_commission_percent)",
+        "INSERT INTO tutor_profiles (user_id, bio, school, major, year_of_study, hourly_rate, subjects_to_teach, card_gradient, is_verified, reject_reason, proposed_commission_percent, ekyc_status, ekyc_score, ekyc_result, identity_submitted_at) " +
+          "VALUES (?, NULL, NULL, NULL, NULL, NULL, '', ?, ?, NULL, NULL, ?, ?, ?, NOW()) " +
+          "ON DUPLICATE KEY UPDATE is_verified=VALUES(is_verified), reject_reason=NULL, ekyc_status=VALUES(ekyc_status), ekyc_score=VALUES(ekyc_score), ekyc_result=VALUES(ekyc_result), identity_submitted_at=NOW()",
         [
           req.user!.id,
-          bio,
-          school,
-          major,
-          yearOfStudy,
-          hourlyRate,
-          subjectsCSV,
-          cardGradient,
-          proposedPercent,
+          "bg-gradient-to-r from-blue-600 via-indigo-600 to-[#13519c]",
+          nextStatus,
+          ekycStatus,
+          ekycScore,
+          ekycResultJson,
         ]
       );
+
+      if (autoApproved) {
+        await connection.query(
+          "UPDATE tutor_documents SET status = 'APPROVED' WHERE tutor_user_id = ? AND doc_type IN ('CCCD_FRONT','CCCD_BACK','PORTRAIT')",
+          [req.user!.id]
+        );
+      }
     }
 
     await connection.commit();
@@ -344,29 +414,68 @@ export async function uploadMyTutorDocuments(req: AuthedRequest, res: Response):
     [req.user!.id]
   );
 
-  await notifyAdmins({
-    actorId: req.user!.id,
-    type: "SYSTEM",
-    title: currentStatus === "APPROVED" ? "Gia sư đã gửi chứng chỉ mới" : "Có hồ sơ gia sư mới chờ duyệt",
-    body: currentStatus === "APPROVED"
-      ? `${req.user!.email} vừa tải lên chứng chỉ mới.`
-      : `${req.user!.email} vừa gửi hồ sơ xác minh gia sư.`,
-    linkUrl: "/?tab=admin&tutors=1",
-    entityType: "TUTOR_PROFILE",
-    entityId: req.user!.id,
-  });
-  await notifyZaloAdmins("TUTOR_PENDING", [
-    ["👤 Gia sư", req.user!.email],
-    ["📌 Loại", currentStatus === "APPROVED" ? "Chứng chỉ mới chờ duyệt" : "Hồ sơ xác minh mới"],
-    ["📎 Số tài liệu", uploadedDocs.length],
-    ["🆔 User ID", req.user!.id],
-    ["🧭 Admin", "Vào tab Admin > Duyệt gia sư"],
-  ]);
+  const [nextProfileRows]: any = await pool.query(
+    "SELECT is_verified, school, major, bio, subjects_to_teach, hourly_rate, ekyc_status, ekyc_score, identity_submitted_at, teaching_profile_completed_at FROM tutor_profiles WHERE user_id = ? LIMIT 1",
+    [req.user!.id]
+  );
+  const nextProfile = nextProfileRows[0];
+  const autoApproved = nextProfile?.is_verified === "APPROVED" && nextProfile?.ekyc_status === "AUTO_ACCEPTED";
+  const teachingProfileCompleted = hasCompletedTeachingProfile(nextProfile);
+  const identitySubmitted = hasSubmittedIdentity(nextProfile, uploadedDocs);
+
+  if (!uploadedIdentityStep || teachingProfileCompleted) {
+    if (autoApproved) {
+    await notifyAdmins({
+      actorId: req.user!.id,
+      type: "SYSTEM",
+      title: "Gia sư được eKYC tự động duyệt",
+      body: `${req.user!.email} đạt eKYC ${Number(nextProfile.ekyc_score || 0)}% và đã được tự động phê duyệt.`,
+      linkUrl: "/?tab=admin&tutors=1",
+      entityType: "TUTOR_PROFILE",
+      entityId: req.user!.id,
+      metadata: { ekycScore: Number(nextProfile.ekyc_score || 0) },
+    });
+    } else {
+    await notifyAdmins({
+      actorId: req.user!.id,
+      type: "SYSTEM",
+      title: currentStatus === "APPROVED" ? "Gia sư đã gửi chứng chỉ mới" : "Có hồ sơ gia sư mới chờ duyệt",
+      body: currentStatus === "APPROVED"
+        ? `${req.user!.email} vừa tải lên chứng chỉ mới.`
+        : `${req.user!.email} vừa gửi hồ sơ xác minh gia sư.`,
+      linkUrl: "/?tab=admin&tutors=1",
+      entityType: "TUTOR_PROFILE",
+      entityId: req.user!.id,
+    });
+    await notifyZaloAdmins("TUTOR_PENDING", [
+      ["👤 Gia sư", req.user!.email],
+      ["📌 Loại", currentStatus === "APPROVED" ? "Chứng chỉ mới chờ duyệt" : "Hồ sơ xác minh mới"],
+      ["📎 Số tài liệu", uploadedDocs.length],
+      ["🧪 eKYC", nextProfile?.ekyc_score ? `${nextProfile.ekyc_score}% - duyệt tay` : "Chưa chạy"],
+      ["🆔 User ID", req.user!.id],
+      ["🧭 Admin", "Vào tab Admin > Duyệt gia sư"],
+    ]);
+    }
+  }
 
   return res.status(201).json({
     success: true,
-    message: currentStatus === "APPROVED" ? "Đã tải lên chứng chỉ thành công. Đang chờ phê duyệt." : "Đã tải lên CCCD và chân dung. Hồ sơ đang chờ admin phê duyệt.",
-    data: normalizeDocumentRows(req, uploadedDocs),
+    message: uploadedIdentityStep && !teachingProfileCompleted
+      ? "Đã lưu bước 1. Vui lòng tiếp tục bước 2 để hoàn tất hồ sơ dạy học."
+      : autoApproved
+        ? `eKYC đạt ${Number(nextProfile.ekyc_score || 0)}%, hồ sơ đã được tự động phê duyệt.`
+        : currentStatus === "APPROVED"
+          ? "Đã tải lên chứng chỉ thành công. Đang chờ phê duyệt."
+          : "Đã tải lên CCCD và chân dung. Hồ sơ đang chờ admin phê duyệt.",
+    data: {
+      documents: normalizeDocumentRows(req, uploadedDocs),
+      autoApproved,
+      ekycStatus: nextProfile?.ekyc_status || null,
+      ekycScore: nextProfile?.ekyc_score ?? null,
+      identity_submitted: identitySubmitted,
+      teaching_profile_completed: teachingProfileCompleted,
+      registration_step: tutorRegistrationStep(nextProfile, uploadedDocs),
+    },
   });
 }
 

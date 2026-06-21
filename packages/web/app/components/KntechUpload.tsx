@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 
 type KntechUploadProps = {
   accept?: string;
@@ -23,6 +23,24 @@ export default function KntechUpload({
 }: KntechUploadProps) {
   const [dragActive, setDragActive] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const selectedFiles = useMemo(() => {
+    if (!value) return [] as File[];
+    if (value instanceof FileList) return Array.from(value);
+    return [value];
+  }, [value]);
+
+  const imagePreviewFiles = useMemo(
+    () => selectedFiles.filter((file) => file.type.startsWith("image/")).slice(0, multiple ? 4 : 1),
+    [multiple, selectedFiles]
+  );
+  const [previewUrls, setPreviewUrls] = useState<string[]>([]);
+
+  useEffect(() => {
+    const urls = imagePreviewFiles.map((file) => URL.createObjectURL(file));
+    setPreviewUrls(urls);
+    return () => urls.forEach((url) => URL.revokeObjectURL(url));
+  }, [imagePreviewFiles]);
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
@@ -106,24 +124,37 @@ export default function KntechUpload({
           className="hidden"
         />
 
-        {/* Cloud Upload Icon */}
-        <div className={`p-3 rounded-full bg-white dark:bg-slate-800 shadow-sm border border-slate-100 dark:border-slate-800 group-hover:scale-110 transition-transform ${
-          dragActive || fileInfo ? "text-[var(--brand-primary)] border-[var(--brand-primary)]/20" : "text-slate-400"
-        }`}>
-          <svg
-            className="w-8 h-8"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z"
-            />
-          </svg>
-        </div>
+        {previewUrls.length > 0 ? (
+          <div className={multiple ? "grid w-full max-w-xs grid-cols-2 gap-2" : "w-full max-w-[240px]"}>
+            {previewUrls.map((url, index) => (
+              <div key={url} className="overflow-hidden rounded-xl border border-white bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950">
+                <img
+                  src={url}
+                  alt={selectedFiles[index]?.name || "Preview"}
+                  className={multiple ? "h-24 w-full object-cover" : "h-32 w-full object-contain bg-slate-100 dark:bg-slate-900"}
+                />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className={`p-3 rounded-full bg-white dark:bg-slate-800 shadow-sm border border-slate-100 dark:border-slate-800 group-hover:scale-110 transition-transform ${
+            dragActive || fileInfo ? "text-[var(--brand-primary)] border-[var(--brand-primary)]/20" : "text-slate-400"
+          }`}>
+            <svg
+              className="w-8 h-8"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z"
+              />
+            </svg>
+          </div>
+        )}
 
         {/* Info Text */}
         <div className="mt-4 space-y-1">
@@ -142,7 +173,7 @@ export default function KntechUpload({
           ) : (
             <>
               <p className="text-xs font-semibold text-slate-650 dark:text-slate-350">
-                Drag & Drop or <span className="text-[var(--brand-primary)] font-bold hover:underline">Choose file</span> to upload
+                {mainText}
               </p>
               <p className="text-[10px] text-slate-450 dark:text-slate-500 font-medium">
                 {allowedText}

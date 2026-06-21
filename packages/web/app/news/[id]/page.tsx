@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { apiUrl } from "../../utils/api";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -7,7 +8,7 @@ interface Props {
 
 async function getNews(id: string) {
   try {
-    const res = await fetch(`http://localhost:5000/api/news/${id}`, { cache: "no-store" });
+    const res = await fetch(apiUrl(`/api/news/${id}`), { cache: "no-store" });
     if (!res.ok) return null;
     const json = await res.json();
     return json.success ? json.data : null;

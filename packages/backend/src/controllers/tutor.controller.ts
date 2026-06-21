@@ -21,6 +21,10 @@ export const getTutors = async (_req: Request, res: Response) => {
       FROM tutor_profiles tp
       JOIN users u ON tp.user_id = u.id
       WHERE tp.is_verified = 'APPROVED'
+        AND (
+          tp.teaching_profile_completed_at IS NOT NULL
+          OR (COALESCE(tp.school, '') <> '' AND COALESCE(tp.major, '') <> '' AND COALESCE(tp.bio, '') <> '' AND COALESCE(tp.subjects_to_teach, '') <> '')
+        )
     `);
 
     const formats = await Promise.all(rows.map(async (tutor: any) => {
@@ -61,6 +65,10 @@ export const getTutorById = async (req: Request, res: Response): Promise<void> =
       FROM tutor_profiles tp
       JOIN users u ON tp.user_id = u.id
       WHERE tp.user_id = ? AND tp.is_verified = 'APPROVED'
+        AND (
+          tp.teaching_profile_completed_at IS NOT NULL
+          OR (COALESCE(tp.school, '') <> '' AND COALESCE(tp.major, '') <> '' AND COALESCE(tp.bio, '') <> '' AND COALESCE(tp.subjects_to_teach, '') <> '')
+        )
       LIMIT 1
     `, [tutorId]);
 

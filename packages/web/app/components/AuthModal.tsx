@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { apiUrl } from "../utils/api";
 
 type AuthModalProps = {
   isOpen: boolean;
@@ -45,7 +46,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialTab, init
       : { email, username, password, fullName, role };
 
     try {
-      const response = await fetch(`http://localhost:5000${endpoint}`, {
+      const response = await fetch(apiUrl(`${endpoint}`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),

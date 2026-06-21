@@ -27,6 +27,11 @@ CREATE TABLE IF NOT EXISTS tutor_profiles (
   is_verified ENUM('PENDING','APPROVED','REJECTED') NOT NULL DEFAULT 'PENDING',
   reject_reason TEXT NULL,
   card_gradient VARCHAR(190) NULL DEFAULT 'bg-gradient-to-r from-blue-600 via-indigo-600 to-[#13519c]',
+  ekyc_status ENUM('NOT_RUN','AUTO_ACCEPTED','MANUAL_REVIEW') NOT NULL DEFAULT 'NOT_RUN',
+  ekyc_score DECIMAL(5,2) NULL,
+  ekyc_result JSON NULL,
+  identity_submitted_at TIMESTAMP NULL,
+  teaching_profile_completed_at TIMESTAMP NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX (is_verified)
 );
@@ -74,6 +79,9 @@ CREATE TABLE IF NOT EXISTS appointments (
   escrow_released_at DATETIME NULL,
   live_room_code VARCHAR(128) NULL,
   live_room_url TEXT NULL,
+  student_completed_at DATETIME NULL,
+  tutor_completed_at DATETIME NULL,
+  completed_at DATETIME NULL,
   schedule_type ENUM('SINGLE','LONG_TERM') NOT NULL DEFAULT 'SINGLE',
   custom_schedule TEXT NULL,
   parent_appointment_id VARCHAR(36) NULL,

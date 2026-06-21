@@ -1,5 +1,6 @@
 import React from "react";
 import { getAvatarUrl } from "../../utils/avatar";
+import { apiUrl } from "../../utils/api";
 
 type TutorDetailModalProps = {
   viewingTutor: any;
@@ -110,7 +111,7 @@ export default function TutorDetailModal({
               </span>
               <div className="grid grid-cols-2 gap-2">
                 {viewingTutor.documents.map((doc: any) => {
-                  const fileUrl = `http://localhost:5000/api/tutors/documents/${doc.id}?token=${token}`;
+                  const fileUrl = apiUrl(`/api/tutors/documents/${doc.id}?token=${token}`);
                   const isImage = doc.mime_type?.startsWith("image/");
                   return (
                     <div

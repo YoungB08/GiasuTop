@@ -13,6 +13,8 @@ const EnvSchema = z.object({
   JWT_EXPIRES_IN: z.string().default("7d"),
 
   CORS_ORIGINS: z.string().optional(), // comma-separated
+  PUBLIC_API_URL: z.string().url().optional(),
+  PUBLIC_WEB_URL: z.string().url().optional(),
 
   SEPAY_API_KEY: z.string().optional(),
   SEPAY_BANK_CODE: z.string().optional(),

@@ -1,4 +1,6 @@
 import express from 'express';
+import { createServer } from 'http';
+import { setupSocket } from './socket';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import authRoutes from './routes/auth.routes';
@@ -12,6 +14,7 @@ import walletRoutes from './routes/wallet.routes';
 import filterRoutes from './routes/filter.routes';
 import classRoutes from './routes/class.routes';
 import notificationRoutes from './routes/notification.routes';
+import ekycRoutes from './routes/ekyc.routes';
 import { listSubjects, listNews, listDocuments, uploadDocument, deleteDocumentSecure } from './controllers/admin.controller';
 import { createChatUpload, detectAllowedUpload, CHAT_UPLOAD_DIR } from './utils/upload';
 import { requireAuth } from './middlewares/auth';
@@ -77,6 +80,7 @@ app.use('/api/wallet', walletRoutes);
 app.use('/api/filters', filterRoutes);
 app.use('/api/classes', classRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/ekyc', ekycRoutes);
 app.get('/api/subjects', listSubjects);
 app.get('/api/news', listNews);
 app.get('/api/documents', listDocuments);
@@ -155,6 +159,26 @@ async function runStartupMigration() {
       console.log("Adding age column to users...");
       await pool.query("ALTER TABLE users ADD COLUMN age INT NULL");
     }
+    if (!(await columnExists("tutor_profiles", "ekyc_status"))) {
+      console.log("Adding ekyc_status column to tutor_profiles...");
+      await pool.query("ALTER TABLE tutor_profiles ADD COLUMN ekyc_status ENUM('NOT_RUN','AUTO_ACCEPTED','MANUAL_REVIEW') NOT NULL DEFAULT 'NOT_RUN' AFTER card_gradient");
+    }
+    if (!(await columnExists("tutor_profiles", "ekyc_score"))) {
+      console.log("Adding ekyc_score column to tutor_profiles...");
+      await pool.query("ALTER TABLE tutor_profiles ADD COLUMN ekyc_score DECIMAL(5,2) NULL AFTER ekyc_status");
+    }
+    if (!(await columnExists("tutor_profiles", "ekyc_result"))) {
+      console.log("Adding ekyc_result column to tutor_profiles...");
+      await pool.query("ALTER TABLE tutor_profiles ADD COLUMN ekyc_result JSON NULL AFTER ekyc_score");
+    }
+    if (!(await columnExists("tutor_profiles", "identity_submitted_at"))) {
+      console.log("Adding identity_submitted_at column to tutor_profiles...");
+      await pool.query("ALTER TABLE tutor_profiles ADD COLUMN identity_submitted_at TIMESTAMP NULL AFTER ekyc_result");
+    }
+    if (!(await columnExists("tutor_profiles", "teaching_profile_completed_at"))) {
+      console.log("Adding teaching_profile_completed_at column to tutor_profiles...");
+      await pool.query("ALTER TABLE tutor_profiles ADD COLUMN teaching_profile_completed_at TIMESTAMP NULL AFTER identity_submitted_at");
+    }
     if (!(await columnExists("appointments", "commission_percent_snapshot"))) {
       console.log("Adding commission_percent_snapshot column to appointments...");
       await pool.query("ALTER TABLE appointments ADD COLUMN commission_percent_snapshot DECIMAL(5,2) NULL AFTER payment_status");
@@ -174,6 +198,18 @@ async function runStartupMigration() {
     if (!(await columnExists("appointments", "escrow_released_at"))) {
       console.log("Adding escrow_released_at column to appointments...");
       await pool.query("ALTER TABLE appointments ADD COLUMN escrow_released_at DATETIME NULL AFTER escrow_release_date");
+    }
+    if (!(await columnExists("appointments", "student_completed_at"))) {
+      console.log("Adding student_completed_at column to appointments...");
+      await pool.query("ALTER TABLE appointments ADD COLUMN student_completed_at DATETIME NULL AFTER live_room_url");
+    }
+    if (!(await columnExists("appointments", "tutor_completed_at"))) {
+      console.log("Adding tutor_completed_at column to appointments...");
+      await pool.query("ALTER TABLE appointments ADD COLUMN tutor_completed_at DATETIME NULL AFTER student_completed_at");
+    }
+    if (!(await columnExists("appointments", "completed_at"))) {
+      console.log("Adding completed_at column to appointments...");
+      await pool.query("ALTER TABLE appointments ADD COLUMN completed_at DATETIME NULL AFTER tutor_completed_at");
     }
     if (!(await columnExists("documents", "reject_reason"))) {
       console.log("Adding reject_reason column to documents...");
@@ -278,6 +314,9 @@ app.get('/', (req, res) => {
 app.use(notFound);
 app.use(errorHandler);
 
-app.listen(PORT, () => {
-  console.log(`🚀 Server Backend đã kích hoạt tại cổng http://localhost:${PORT}`);
+const httpServer = createServer(app);
+setupSocket(httpServer, corsOrigins);
+
+httpServer.listen(PORT, () => {
+  console.log(`🚀 Server Backend đã kích hoạt tại ${env.PUBLIC_API_URL || `port ${PORT}`}`);
 });

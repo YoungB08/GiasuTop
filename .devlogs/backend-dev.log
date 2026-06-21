@@ -1,0 +1,133 @@
+
+> backend@1.0.0 dev
+> ts-node-dev --respawn --transpile-only src/index.ts
+
+[INFO] 13:43:48 ts-node-dev ver. 2.0.0 (using ts-node ver. 10.9.2, typescript ver. 6.0.3)
+◇ injected env (21) from .env // tip: ⌘ suppress logs { quiet: true }
+◇ injected env (0) from .env // tip: ⌘ custom filepath { path: '/custom/path/.env' }
+Checking and running users table migrations...
+🚀 Server Backend đã kích hoạt tại cổng http://localhost:5000
+Users & SePay table migrations checked/completed successfully.
+Socket connected: Quwa2q68E-oHUnctAAAB
+User 11111111-1111-1111-1111-111111111111 (Admin KNTech) joined room: 370f2d2d-0dd8-4b79-8a23-b79157f98ee0
+Socket connected: vrzOdTxobWNJ3K-1AAAD
+User c8905277-baec-468f-bcd2-ceb19c93dbf7 (Trần Khôi Bi) joined room: 057f08fa-0554-47f7-abdd-8ce8027fd463
+Socket disconnected: vrzOdTxobWNJ3K-1AAAD
+Socket disconnected: Quwa2q68E-oHUnctAAAB
+Socket connected: 1Db5otnrQhNV4nvTAAAF
+User 11111111-1111-1111-1111-111111111111 (Admin KNTech) joined room: 057f08fa-0554-47f7-abdd-8ce8027fd463
+Socket connected: qAECaVxYod3g4-kUAAAH
+User c8905277-baec-468f-bcd2-ceb19c93dbf7 (Trần Khôi Bi) joined room: 057f08fa-0554-47f7-abdd-8ce8027fd463
+Socket disconnected: 1Db5otnrQhNV4nvTAAAF
+Socket disconnected: qAECaVxYod3g4-kUAAAH
+Socket connected: EKEujdWkZ12PovG8AAAJ
+User 11111111-1111-1111-1111-111111111111 (Admin KNTech) joined room: 057f08fa-0554-47f7-abdd-8ce8027fd463
+Socket connected: mzGXgBsfjsyQYwZPAAAL
+User c8905277-baec-468f-bcd2-ceb19c93dbf7 (Trần Khôi Bi) joined room: 057f08fa-0554-47f7-abdd-8ce8027fd463
+Socket disconnected: mzGXgBsfjsyQYwZPAAAL
+Socket connected: gdQ4twP4roBqrEcrAAAN
+User c8905277-baec-468f-bcd2-ceb19c93dbf7 (Trần Khôi Bi) joined room: 057f08fa-0554-47f7-abdd-8ce8027fd463
+Socket disconnected: gdQ4twP4roBqrEcrAAAN
+Socket disconnected: EKEujdWkZ12PovG8AAAJ
+[INFO] 13:52:27 Restarting: D:\GiaSu-KNTech\packages\backend\src\utils\env.ts has been modified
+◇ injected env (21) from .env // tip: ⌁ auth for agents [www.vestauth.com]
+◇ injected env (0) from .env // tip: ⌘ multiple files { path: ['.env.local', '.env'] }
+Checking and running users table migrations...
+🚀 Server Backend đã kích hoạt tại cổng http://localhost:5000
+Users & SePay table migrations checked/completed successfully.
+[INFO] 13:52:47 Restarting: D:\GiaSu-KNTech\packages\backend\src\socket.ts has been modified
+◇ injected env (21) from .env // tip: ◈ secrets for agents [www.dotenvx.com]
+◇ injected env (0) from .env // tip: ◈ encrypted .env [www.dotenvx.com]
+Checking and running users table migrations...
+🚀 Server Backend đã kích hoạt tại cổng http://localhost:5000
+Users & SePay table migrations checked/completed successfully.
+[INFO] 13:53:32 Restarting: D:\GiaSu-KNTech\packages\backend\src\controllers\users.controller.ts has been modified
+◇ injected env (21) from .env // tip: ⌁ auth for agents [www.vestauth.com]
+◇ injected env (0) from .env // tip: ⌘ enable debugging { debug: true }
+Checking and running users table migrations...
+🚀 Server Backend đã kích hoạt tại cổng http://localhost:5000
+Users & SePay table migrations checked/completed successfully.
+[INFO] 13:53:42 Restarting: D:\GiaSu-KNTech\packages\backend\src\routes\users.routes.ts has been modified
+◇ injected env (21) from .env // tip: ⌁ auth for agents [www.vestauth.com]
+◇ injected env (0) from .env // tip: ◈ encrypted .env [www.dotenvx.com]
+Checking and running users table migrations...
+🚀 Server Backend đã kích hoạt tại cổng http://localhost:5000
+Users & SePay table migrations checked/completed successfully.
+[INFO] 13:54:01 Restarting: D:\GiaSu-KNTech\packages\backend\src\index.ts has been modified
+◇ injected env (21) from .env // tip: ◈ secrets for agents [www.dotenvx.com]
+◇ injected env (0) from .env // tip: ⌘ custom filepath { path: '/custom/path/.env' }
+Checking and running users table migrations...
+🚀 Server Backend đã kích hoạt tại cổng http://localhost:5000
+Adding student_completed_at column to appointments...
+Adding tutor_completed_at column to appointments...
+Adding completed_at column to appointments...
+Users & SePay table migrations checked/completed successfully.
+[INFO] 13:54:15 Restarting: D:\GiaSu-KNTech\packages\backend\src\controllers\payment.controller.ts has been modified
+◇ injected env (21) from .env // tip: ⌘ suppress logs { quiet: true }
+◇ injected env (0) from .env // tip: ⌘ suppress logs { quiet: true }
+Checking and running users table migrations...
+🚀 Server Backend đã kích hoạt tại cổng http://localhost:5000
+Users & SePay table migrations checked/completed successfully.
+[INFO] 13:54:25 Restarting: D:\GiaSu-KNTech\packages\backend\src\controllers\admin.controller.ts has been modified
+◇ injected env (21) from .env // tip: ⌘ enable debugging { debug: true }
+◇ injected env (0) from .env // tip: ⌘ multiple files { path: ['.env.local', '.env'] }
+Checking and running users table migrations...
+🚀 Server Backend đã kích hoạt tại cổng http://localhost:5000
+Users & SePay table migrations checked/completed successfully.
+[INFO] 13:58:52 Restarting: D:\GiaSu-KNTech\packages\backend\src\utils\url.ts has been modified
+◇ injected env (21) from .env // tip: ⌘ enable debugging { debug: true }
+◇ injected env (0) from .env // tip: ⌘ enable debugging { debug: true }
+Checking and running users table migrations...
+🚀 Server Backend đã kích hoạt tại cổng http://localhost:5000
+Users & SePay table migrations checked/completed successfully.
+[INFO] 14:06:30 Restarting: D:\GiaSu-KNTech\packages\backend\src\index.ts has been modified
+◇ injected env (23) from .env // tip: ⌁ auth for agents [www.vestauth.com]
+◇ injected env (0) from .env // tip: ⌘ enable debugging { debug: true }
+Checking and running users table migrations...
+🚀 Server Backend đã kích hoạt tại http://localhost:5000
+Users & SePay table migrations checked/completed successfully.
+[INFO] 14:08:36 Restarting: D:\GiaSu-KNTech\packages\backend\src\services\notification.service.ts has been modified
+◇ injected env (23) from .env // tip: ⌁ auth for agents [www.vestauth.com]
+◇ injected env (0) from .env // tip: ⌘ suppress logs { quiet: true }
+Checking and running users table migrations...
+🚀 Server Backend đã kích hoạt tại http://localhost:5000
+Users & SePay table migrations checked/completed successfully.
+[INFO] 16:40:15 Restarting: D:\GiaSu-KNTech\packages\backend\src\index.ts has been modified
+◇ injected env (23) from .env // tip: ⌘ enable debugging { debug: true }
+◇ injected env (0) from .env // tip: ◈ encrypted .env [www.dotenvx.com]
+Checking and running users table migrations...
+🚀 Server Backend đã kích hoạt tại http://localhost:5000
+Users & SePay table migrations checked/completed successfully.
+[INFO] 16:40:56 Restarting: D:\GiaSu-KNTech\packages\backend\src\controllers\tutorProfile.controller.ts has been modified
+◇ injected env (23) from .env // tip: ⌘ multiple files { path: ['.env.local', '.env'] }
+◇ injected env (0) from .env // tip: ◈ secrets for agents [www.dotenvx.com]
+Checking and running users table migrations...
+🚀 Server Backend đã kích hoạt tại http://localhost:5000
+Users & SePay table migrations checked/completed successfully.
+[INFO] 16:41:26 Restarting: D:\GiaSu-KNTech\packages\backend\src\index.ts has been modified
+◇ injected env (23) from .env // tip: ◈ secrets for agents [www.dotenvx.com]
+◇ injected env (0) from .env // tip: ⌘ enable debugging { debug: true }
+Checking and running users table migrations...
+🚀 Server Backend đã kích hoạt tại http://localhost:5000
+Adding ekyc_status column to tutor_profiles...
+Adding ekyc_score column to tutor_profiles...
+Adding ekyc_result column to tutor_profiles...
+Users & SePay table migrations checked/completed successfully.
+[INFO] 16:41:43 Restarting: D:\GiaSu-KNTech\packages\backend\src\controllers\admin.controller.ts has been modified
+◇ injected env (23) from .env // tip: ⌁ auth for agents [www.vestauth.com]
+◇ injected env (0) from .env // tip: ◈ encrypted .env [www.dotenvx.com]
+Checking and running users table migrations...
+🚀 Server Backend đã kích hoạt tại http://localhost:5000
+Users & SePay table migrations checked/completed successfully.
+[INFO] 16:47:50 Restarting: D:\GiaSu-KNTech\packages\backend\src\controllers\tutorProfile.controller.ts has been modified
+◇ injected env (23) from .env // tip: ⌘ enable debugging { debug: true }
+◇ injected env (0) from .env // tip: ⌘ custom filepath { path: '/custom/path/.env' }
+Checking and running users table migrations...
+🚀 Server Backend đã kích hoạt tại http://localhost:5000
+Users & SePay table migrations checked/completed successfully.
+[INFO] 16:48:33 Restarting: D:\GiaSu-KNTech\packages\backend\src\routes\tutor.routes.ts has been modified
+◇ injected env (23) from .env // tip: ⌘ multiple files { path: ['.env.local', '.env'] }
+◇ injected env (0) from .env // tip: ⌘ multiple files { path: ['.env.local', '.env'] }
+Checking and running users table migrations...
+🚀 Server Backend đã kích hoạt tại http://localhost:5000
+Users & SePay table migrations checked/completed successfully.

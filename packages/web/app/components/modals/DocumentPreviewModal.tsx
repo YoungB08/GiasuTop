@@ -1,459 +1,160 @@
-import React, { useEffect, useRef, useState } from "react";
-
-// Helper function to dynamically load PDF.js from CDN to avoid SSR and configuration issues
-const loadPdfJS = (): Promise<any> => {
-  return new Promise((resolve, reject) => {
-    if (typeof window === "undefined") {
-      reject(new Error("window is undefined"));
-      return;
-    }
-    
-    if ((window as any).pdfjsLib) {
-      resolve((window as any).pdfjsLib);
-      return;
-    }
-
-    // Check if script tag is already present in document
-    let script = document.getElementById("pdfjs-script-cdn") as HTMLScriptElement;
-    if (script) {
-      const onScriptLoad = () => {
-        const lib = (window as any).pdfjsLib;
-        if (lib) {
-          lib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
-          resolve(lib);
-        } else {
-          reject(new Error("pdfjsLib not found after script load"));
-        }
-      };
-      script.addEventListener("load", onScriptLoad);
-      script.addEventListener("error", () => reject(new Error("Lỗi tải PDF.js CDN")));
-      return;
-    }
-
-    script = document.createElement("script");
-    script.id = "pdfjs-script-cdn";
-    script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
-    script.onload = () => {
-      const pdfjsLib = (window as any).pdfjsLib;
-      if (pdfjsLib) {
-        pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
-        resolve(pdfjsLib);
-      } else {
-        reject(new Error("pdfjsLib not found after script injection"));
-      }
-    };
-    script.onerror = () => reject(new Error("Lỗi tải thư viện PDF.js từ CDN"));
-    document.body.appendChild(script);
-  });
-};
+import React, { useEffect, useMemo, useState } from "react";
 
 type DocumentPreviewModalProps = {
-  previewDoc: { title: string; file_url: string } | null;
+  previewDoc: { title: string; file_url: string; mime_type?: string } | null;
   onClose: () => void;
 };
 
-export default function DocumentPreviewModal({
-  previewDoc,
-  onClose,
-}: DocumentPreviewModalProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+function isOfficeFile(url: string, title: string, mimeType: string) {
+  return (
+    mimeType.includes("word") ||
+    mimeType.includes("excel") ||
+    mimeType.includes("presentation") ||
+    mimeType.includes("officedocument") ||
+    /\.(docx?|xlsx?|pptx?)($|\?)/i.test(url) ||
+    /\.(docx?|xlsx?|pptx?)$/i.test(title)
+  );
+}
 
-  // Eager pre-load the preview libraries (PDF.js and docx-preview) on initial mount
-  // to make preview opens instant when clicked.
+function isImageFile(url: string, title: string, mimeType: string) {
+  return mimeType.startsWith("image/") || /\.(png|jpe?g|webp|gif|bmp)($|\?)/i.test(url) || /\.(png|jpe?g|webp|gif|bmp)$/i.test(title);
+}
+
+function isPdfFile(url: string, title: string, mimeType: string) {
+  return mimeType === "application/pdf" || /\.pdf($|\?)/i.test(url) || /\.pdf$/i.test(title);
+}
+
+function getGoogleDriveEmbedUrl(url: string): { embedUrl: string; isDrive: boolean } {
+  const fileDMatch = url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
+  if (fileDMatch) {
+    return { embedUrl: `https://drive.google.com/file/d/${fileDMatch[1]}/preview`, isDrive: true };
+  }
+  const openIdMatch = url.match(/drive\.google\.com\/open\?id=([a-zA-Z0-9_-]+)/);
+  if (openIdMatch) {
+    return { embedUrl: `https://drive.google.com/file/d/${openIdMatch[1]}/preview`, isDrive: true };
+  }
+  return { embedUrl: url, isDrive: false };
+}
+
+export default function DocumentPreviewModal({ previewDoc, onClose }: DocumentPreviewModalProps) {
+  const [iframeFailed, setIframeFailed] = useState(false);
+
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      loadPdfJS().catch((err) => console.warn("Lỗi tải trước PDF.js:", err));
-      import("docx-preview").catch((err) => console.warn("Lỗi tải trước docx-preview:", err));
-    }
-  }, []);
+    setIframeFailed(false);
+  }, [previewDoc?.file_url]);
 
-  useEffect(() => {
-    if (!previewDoc) return;
-
+  const data = useMemo(() => {
+    if (!previewDoc) return null;
     const fileUrl = previewDoc.file_url;
-    const title = previewDoc.title || "";
-    const isWord = /\.(docx?)$/i.test(fileUrl) || /\.(docx?)$/i.test(title);
-
-    if (!isWord) {
-      setLoading(false);
-      setError(null);
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
-    // Render word file using docx-preview client-side
-    let active = true;
+    const title = previewDoc.title || "Xem tài liệu";
+    const mimeType = previewDoc.mime_type || "";
+    const cleanUrl = fileUrl.split("#")[0];
+    const image = isImageFile(cleanUrl, title, mimeType);
+    const pdf = isPdfFile(cleanUrl, title, mimeType);
+    const office = isOfficeFile(cleanUrl, title, mimeType);
+    const canUseOfficeViewer = office && /^https?:\/\//i.test(fileUrl);
     
-    // docx-preview and fetch resource load
-    Promise.all([
-      import("docx-preview"),
-      fetch(fileUrl).then((res) => {
-        if (!res.ok) throw new Error(`Lỗi tải file: ${res.statusText}`);
-        return res.blob();
-      }),
-    ])
-      .then(([docxModule, blob]) => {
-        if (!active) return;
-        
-        if (containerRef.current) {
-          containerRef.current.innerHTML = "";
-          // Render docx into the container
-          docxModule.renderAsync(blob, containerRef.current, undefined, {
-            inWrapper: true,
-            ignoreWidth: false,
-            ignoreHeight: true,
-            breakPages: true,
-            experimental: true
-          })
-            .then(() => {
-              if (active) setLoading(false);
-            })
-            .catch((err) => {
-              console.error("Lỗi dựng tài liệu Word:", err);
-              if (active) {
-                setError("Không thể hiển thị xem trước tệp Word này. Bạn có thể tải tệp tin về để mở.");
-                setLoading(false);
-              }
-            });
-        }
-      })
-      .catch((err) => {
-        console.error("Lỗi tải tệp tin Word:", err);
-        if (active) {
-          setError("Không thể kết nối tải tệp tin Word. Vui lòng kiểm tra lại kết nối mạng.");
-          setLoading(false);
-        }
-      });
+    const { embedUrl, isDrive } = getGoogleDriveEmbedUrl(fileUrl);
+    const iframeUrl = canUseOfficeViewer
+      ? `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(fileUrl)}`
+      : embedUrl;
 
-    return () => {
-      active = false;
+    return {
+      fileUrl,
+      title,
+      label: image ? "Ảnh" : pdf ? "PDF" : office ? "Office" : isDrive ? "Google Drive" : "Tài liệu",
+      image,
+      iframeUrl,
+      isDrive,
+      canFrame: !image,
     };
   }, [previewDoc]);
 
-  if (!previewDoc) return null;
-
-  const fileUrl = previewDoc.file_url;
-  const title = previewDoc.title || "";
-  const isImage = /\.(png|jpe?g|webp|gif)$/i.test(fileUrl) || /\.(png|jpe?g|webp|gif)$/i.test(title);
-  const isPdf = /\.pdf$/i.test(fileUrl) || /\.pdf$/i.test(title);
-  const isWord = /\.(docx?)$/i.test(fileUrl) || /\.(docx?)$/i.test(title);
+  if (!previewDoc || !data) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 p-4 backdrop-blur-md animate-fade-in">
-      {/* Dynamic Style Injection for Responsive DOCX and PDF layouts */}
-      <style>{`
-        .docx-container-wrapper .docx-wrapper {
-          background: transparent !important;
-          padding: 0 !important;
-          display: flex !important;
-          flex-direction: column !important;
-          align-items: center !important;
-          gap: 1.5rem !important;
-        }
-        .docx-container-wrapper section.docx {
-          width: 100% !important;
-          max-width: 800px !important;
-          height: auto !important;
-          min-height: unset !important;
-          box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.05) !important;
-          margin-bottom: 0 !important;
-          padding: 2.5rem 2rem !important;
-          box-sizing: border-box !important;
-          background: white !important;
-          color: #1f2937 !important;
-          border-radius: 0.75rem !important;
-          border: 1px solid #e5e7eb !important;
-        }
-        /* Make sure all font styling fits standard viewport */
-        .docx-container-wrapper section.docx p, 
-        .docx-container-wrapper section.docx span, 
-        .docx-container-wrapper section.docx td {
-          font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
-        }
-        /* Ensure tables in Word document resize responsively */
-        .docx-container-wrapper section.docx table {
-          width: 100% !important;
-          max-width: 100% !important;
-          overflow-x: auto !important;
-          display: block !important;
-        }
-      `}</style>
-
-      <div className="relative w-full max-w-4xl bg-white dark:bg-[#111827] rounded-2xl overflow-hidden shadow-2xl border dark:border-slate-800 flex flex-col max-h-[90vh]">
-        
-        {/* Header */}
-        <div className="flex justify-between items-center px-6 py-4 border-b dark:border-slate-800 bg-slate-50 dark:bg-slate-900/60">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 p-4 backdrop-blur-md">
+      <div className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-[#111827]">
+        <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-900/70">
           <div className="min-w-0">
-            <span className="text-[9px] bg-blue-600 text-white font-bold px-2 py-0.5 rounded mr-2 uppercase tracking-wide">
-              {isImage ? "Ảnh" : isPdf ? "PDF" : isWord ? "Word Doc" : "Tài liệu"}
+            <span className="mr-2 rounded bg-[#13519c] px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">
+              {data.label}
             </span>
-            <span className="text-xs font-bold text-slate-800 dark:text-white truncate inline-block max-w-[280px] sm:max-w-[450px]">
-              {previewDoc.title || "Xem trước tài liệu"}
+            <span className="inline-block max-w-[60vw] truncate align-middle text-xs font-bold text-slate-800 dark:text-white">
+              {data.title}
             </span>
           </div>
-          <div className="flex items-center gap-3">
+
+          <div className="flex shrink-0 items-center gap-2">
             <a
-              href={fileUrl}
+              href={data.fileUrl}
               download
               target="_blank"
               rel="noreferrer"
-              className="text-[11px] sm:text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 bg-blue-50 dark:bg-slate-800 px-3 py-1.5 rounded-lg border border-blue-100 dark:border-slate-700 transition"
-              title="Tải tệp tin về máy"
+              className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-1.5 text-[11px] font-bold text-blue-700 transition hover:bg-blue-100 dark:border-slate-700 dark:bg-slate-800 dark:text-blue-300"
             >
-              📥 Tải xuống tệp
+              Tải xuống
+            </a>
+            <a
+              href={data.fileUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-bold text-slate-600 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+            >
+              Mở tab
             </a>
             <button
+              type="button"
               onClick={onClose}
-              className="h-8 w-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-400 flex items-center justify-center text-sm cursor-pointer transition font-bold"
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-sm font-bold text-slate-500 transition hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
               title="Đóng"
             >
-              ✕
+              ×
             </button>
           </div>
         </div>
 
-        {/* Content Body */}
-        <div className="flex-1 overflow-auto bg-slate-100 dark:bg-slate-950 p-4 flex items-center justify-center min-h-[50vh]">
-          
-          {loading && (
-            <div className="flex flex-col items-center justify-center gap-3 text-slate-500 py-12">
-              <div className="h-9 w-9 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-              <span className="text-xs font-semibold">Đang chuẩn bị bản xem trước tài liệu...</span>
+        {data.isDrive && (
+          <div className="bg-amber-50 px-4 py-2.5 border-b border-amber-100 dark:bg-amber-950/30 dark:border-amber-900/30 flex items-start gap-2.5 text-xs text-amber-800 dark:text-amber-300">
+            <span className="text-sm shrink-0 leading-none">💡</span>
+            <div>
+              <strong>Lưu ý về Google Drive:</strong> Nếu tài liệu hiển thị thông báo yêu cầu quyền truy cập, vui lòng kiểm tra và thiết lập quyền chia sẻ của file trên Drive thành <strong>"Bất kỳ ai có đường liên kết đều có thể xem"</strong> (Anyone with the link can view) để mọi người có thể xem trực tiếp.
             </div>
-          )}
+          </div>
+        )}
 
-          {error && !loading && (
-            <div className="flex flex-col items-center justify-center text-center gap-3 max-w-md p-6 bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800">
-              <span className="text-3xl">⚠️</span>
-              <p className="text-xs text-rose-500 font-bold leading-relaxed">{error}</p>
-              <a
-                href={fileUrl}
-                download
-                className="mt-2 bg-[#13519c] hover:bg-blue-800 text-white font-semibold text-xs px-4 py-2 rounded-lg transition"
-              >
-                Tải xuống tệp tin ngay
-              </a>
+        <div className="min-h-[60vh] flex-1 bg-slate-100 p-3 dark:bg-slate-950">
+          {data.image ? (
+            <div className="flex h-[74vh] items-center justify-center">
+              <img
+                src={data.fileUrl}
+                alt={data.title}
+                className="max-h-full max-w-full rounded-lg border border-slate-200 bg-white object-contain shadow dark:border-slate-800"
+              />
             </div>
-          )}
-
-          {!loading && !error && (
-            <div className="w-full h-full flex items-center justify-center">
-              {isImage ? (
-                <img
-                  src={fileUrl}
-                  alt={previewDoc.title}
-                  className="max-w-full max-h-[75vh] object-contain rounded-lg shadow-md border dark:border-slate-800 bg-white"
-                />
-              ) : isPdf ? (
-                <div className="w-full max-h-[75vh] overflow-y-auto">
-                  <PDFViewer fileUrl={fileUrl} />
-                </div>
-              ) : isWord ? (
-                <div 
-                  ref={containerRef} 
-                  className="w-full max-h-[75vh] overflow-y-auto bg-white p-4 sm:p-6 rounded-lg shadow border border-slate-200 text-left docx-container-wrapper"
-                />
-              ) : (
-                <div className="flex flex-col items-center justify-center text-center gap-3 p-6 bg-white dark:bg-slate-900 rounded-xl border max-w-sm">
-                  <span className="text-3xl">📁</span>
-                  <p className="text-xs text-slate-500 font-medium">Tệp tin này không hỗ trợ hiển thị xem trước trực tuyến.</p>
-                  <a
-                    href={fileUrl}
-                    download
-                    className="bg-[#13519c] hover:bg-blue-800 text-white font-semibold text-xs px-4 py-2 rounded-lg transition"
-                  >
-                    Tải tệp tin về
-                  </a>
-                </div>
-              )}
+          ) : iframeFailed ? (
+            <div className="flex h-[74vh] flex-col items-center justify-center gap-3 rounded-xl border border-slate-200 bg-white p-6 text-center dark:border-slate-800 dark:bg-slate-900">
+              <div className="text-sm font-bold text-slate-800 dark:text-white">Không thể hiển thị tài liệu trong iframe.</div>
+              <p className="max-w-md text-xs text-slate-500">Trình duyệt hoặc máy chủ tài liệu có thể chặn nhúng. Bác vẫn có thể tải xuống hoặc mở tài liệu ở tab mới.</p>
+              <div className="flex gap-2">
+                <a href={data.fileUrl} download className="rounded-lg bg-[#13519c] px-4 py-2 text-xs font-bold text-white">
+                  Tải xuống
+                </a>
+                <a href={data.fileUrl} target="_blank" rel="noreferrer" className="rounded-lg bg-slate-100 px-4 py-2 text-xs font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                  Mở tab
+                </a>
+              </div>
             </div>
+          ) : (
+            <iframe
+              src={data.iframeUrl}
+              title={data.title}
+              className="h-[74vh] w-full rounded-xl border border-slate-200 bg-white shadow dark:border-slate-800"
+              onError={() => setIframeFailed(true)}
+            />
           )}
         </div>
       </div>
-    </div>
-  );
-}
-
-// React component to render all PDF pages using PDF.js
-type PDFViewerProps = {
-  fileUrl: string;
-};
-
-function PDFViewer({ fileUrl }: PDFViewerProps) {
-  const [pages, setPages] = useState<number[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const pdfRef = useRef<any>(null);
-
-  useEffect(() => {
-    let active = true;
-
-    const loadPDF = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        
-        const pdfjsLib = await loadPdfJS();
-        if (!active) return;
-
-        const loadingTask = pdfjsLib.getDocument(fileUrl);
-        const pdf = await loadingTask.promise;
-        
-        if (!active) return;
-        
-        pdfRef.current = pdf;
-        const pageNumbers = Array.from({ length: pdf.numPages }, (_, i) => i + 1);
-        setPages(pageNumbers);
-        setLoading(false);
-      } catch (err: any) {
-        console.error("Lỗi tải PDF:", err);
-        if (active) {
-          setError("Không thể tải tài liệu PDF. Vui lòng thử lại sau hoặc tải trực tiếp.");
-          setLoading(false);
-        }
-      }
-    };
-
-    loadPDF();
-
-    return () => {
-      active = false;
-    };
-  }, [fileUrl]);
-
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center gap-3 py-12 text-slate-500">
-        <div className="h-8 w-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-        <span className="text-xs font-semibold">Đang chuẩn bị các trang tài liệu PDF...</span>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="text-center p-6 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 text-rose-500 font-bold text-xs max-w-md mx-auto">
-        ⚠️ {error}
-      </div>
-    );
-  }
-
-  return (
-    <div className="w-full flex flex-col items-center gap-4 bg-slate-100 dark:bg-slate-950 py-2 px-1">
-      {pages.map((pageNum) => (
-        <PDFPage key={pageNum} pdf={pdfRef.current} pageNum={pageNum} />
-      ))}
-    </div>
-  );
-}
-
-type PDFPageProps = {
-  pdf: any;
-  pageNum: number;
-};
-
-function PDFPage({ pdf, pageNum }: PDFPageProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [loading, setLoading] = useState(true);
-  const [isVisible, setIsVisible] = useState(false);
-
-  // IntersectionObserver detects when the page container scrolls close to viewport.
-  // We only compile and draw the canvas when it is close, speeding up rendering drastically.
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setIsVisible(true);
-          observer.disconnect(); // Render once, no need to monitor visibility anymore
-        }
-      },
-      { rootMargin: "300px" } // Pre-load 300px before scrolling into viewport
-    );
-
-    if (containerRef.current) {
-      observer.observe(containerRef.current);
-    }
-
-    return () => {
-      observer.disconnect();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!isVisible) return;
-
-    let active = true;
-    let currentRenderTask: any = null;
-
-    const renderPage = async () => {
-      try {
-        setLoading(true);
-        const page = await pdf.getPage(pageNum);
-        if (!active) return;
-
-        const canvas = canvasRef.current;
-        if (!canvas) return;
-
-        const context = canvas.getContext("2d");
-        if (!context) return;
-
-        // scale: 1.5 ensures clear text rendering on high-DPI displays.
-        const viewport = page.getViewport({ scale: 1.5 });
-        
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
-
-        const renderContext = {
-          canvasContext: context,
-          viewport: viewport,
-        };
-
-        currentRenderTask = page.render(renderContext);
-        await currentRenderTask.promise;
-        
-        if (active) {
-          setLoading(false);
-        }
-      } catch (err) {
-        // Suppress errors from cancelled rendering tasks on component unmount
-        console.warn(`Render page ${pageNum} cancelled/failed:`, err);
-      }
-    };
-
-    renderPage();
-
-    return () => {
-      active = false;
-      if (currentRenderTask) {
-        currentRenderTask.cancel();
-      }
-    };
-  }, [pdf, pageNum, isVisible]);
-
-  return (
-    <div 
-      ref={containerRef}
-      className="w-full max-w-[800px] bg-white dark:bg-[#1f2937] rounded-lg shadow-md border border-slate-200 dark:border-slate-800 overflow-hidden relative min-h-[300px] flex items-center justify-center"
-    >
-      {(loading || !isVisible) && (
-        <div className="absolute inset-0 flex items-center justify-center bg-slate-50/50 dark:bg-slate-900/50">
-          <div className="h-6 w-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-        </div>
-      )}
-      {isVisible && (
-        <canvas
-          ref={canvasRef}
-          className="w-full h-auto block bg-white"
-          style={{ maxWidth: "100%" }}
-        />
-      )}
     </div>
   );
 }

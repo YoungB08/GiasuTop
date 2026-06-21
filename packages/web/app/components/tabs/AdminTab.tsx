@@ -1,5 +1,6 @@
 import React from "react";
 import { getAvatarUrl } from "../../utils/avatar";
+import { apiUrl } from "../../utils/api";
 import KntechDataTable, { Column } from "../KntechDataTable";
 
 type AdminTabKey = "dashboard" | "subjects" | "tutors" | "monitor" | "users" | "pending_docs" | "news_crud" | "notifications" | "escrow" | "withdrawals";
@@ -96,7 +97,7 @@ export default function AdminTab({
   const handleDeleteTutorDoc = async (docId: number) => {
     if (!window.confirm("Bác có chắc chắn muốn xóa tài liệu minh chứng này?")) return;
     try {
-      const res = await fetch(`http://localhost:5000/api/admin/tutor-documents/${docId}`, {
+      const res = await fetch(apiUrl(`/api/admin/tutor-documents/${docId}`), {
         method: "DELETE",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -136,7 +137,7 @@ export default function AdminTab({
     if (!token) return;
     setLoadingDashboard(true);
     try {
-      const res = await fetch("http://localhost:5000/api/admin/dashboard-details", {
+      const res = await fetch(apiUrl("/api/admin/dashboard-details"), {
         headers: { Authorization: `Bearer ${token}` },
       });
       const json = await res.json();
@@ -160,7 +161,7 @@ export default function AdminTab({
     if (!token) return;
     setLoadingEscrow(true);
     try {
-      const res = await fetch("http://localhost:5000/api/admin/escrow/appointments", {
+      const res = await fetch(apiUrl("/api/admin/escrow/appointments"), {
         headers: { Authorization: `Bearer ${token}` },
       });
       const json = await res.json();
@@ -180,7 +181,7 @@ export default function AdminTab({
   const handleReleaseEscrow = async (appointmentId: string, adminNote = "") => {
     setReleasingEscrowId(appointmentId);
     try {
-      const res = await fetch(`http://localhost:5000/api/admin/escrow/${appointmentId}/release`, {
+      const res = await fetch(apiUrl(`/api/admin/escrow/${appointmentId}/release`), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -216,7 +217,7 @@ export default function AdminTab({
     if (!token) return;
     setLoadingWithdrawRequests(true);
     try {
-      const res = await fetch("http://localhost:5000/api/admin/withdrawals", {
+      const res = await fetch(apiUrl("/api/admin/withdrawals"), {
         headers: { Authorization: `Bearer ${token}` },
       });
       const json = await res.json();
@@ -240,7 +241,7 @@ export default function AdminTab({
   ) => {
     setDecidingWithdrawId(withdrawId);
     try {
-      const res = await fetch("http://localhost:5000/api/admin/withdrawals/decide", {
+      const res = await fetch(apiUrl("/api/admin/withdrawals/decide"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -433,7 +434,7 @@ export default function AdminTab({
       label: "Details",
       sortable: true,
       render: (row) => (
-        <span className="text-slate-600 dark:text-slate-355 truncate max-w-[320px]" title={row.details || ""}>
+        <span className="block text-slate-600 dark:text-slate-355 break-all whitespace-pre-wrap max-w-xl" title={row.details || ""}>
           {row.details}
         </span>
       )
@@ -891,6 +892,225 @@ export default function AdminTab({
                 </div>
               </div>
 
+              {/* SYSTEM MONITORING CHARTS & ANALYTICS */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* Column 1 & 2: Revenue Trend Line Area Chart */}
+                <div className="lg:col-span-2 bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm text-left">
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">📈 Xu hướng Doanh thu & Chiết khấu</h4>
+                      <p className="text-[10px] text-slate-400 mt-0.5">Biểu đồ 7 ngày giao dịch gần nhất</p>
+                    </div>
+                    <div className="flex items-center gap-3 text-[10px] font-semibold">
+                      <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-blue-500 inline-block"></span> Doanh thu</span>
+                      <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-rose-500 inline-block"></span> Hoa hồng</span>
+                    </div>
+                  </div>
+
+                  {(() => {
+                    // Compute last 7 days stats
+                    const last7Days = Array.from({ length: 7 }, (_, i) => {
+                      const d = new Date();
+                      d.setDate(d.getDate() - i);
+                      return d.toISOString().split("T")[0];
+                    }).reverse();
+
+                    const dailyStats = last7Days.map(dateStr => {
+                      let rev = 0;
+                      let comm = 0;
+                      if (dashboardData.payments) {
+                        dashboardData.payments.forEach((p: any) => {
+                          const pDate = new Date(p.created_at).toISOString().split("T")[0];
+                          if (pDate === dateStr) {
+                            rev += Number(p.price_paid || 0);
+                            comm += Number(p.commission_amount || 0);
+                          }
+                        });
+                      }
+                      return { date: dateStr, revenue: rev, commission: comm };
+                    });
+
+                    const maxRev = Math.max(...dailyStats.map(s => s.revenue), 100000);
+                    
+                    // Generate points for SVG path (Width: 500, Height: 150)
+                    const pointsRev = dailyStats.map((s, idx) => {
+                      const x = (idx * (500 / 6)).toFixed(1);
+                      const y = (150 - (s.revenue / maxRev) * 110 - 20).toFixed(1);
+                      return `${x},${y}`;
+                    });
+
+                    const pointsComm = dailyStats.map((s, idx) => {
+                      const x = (idx * (500 / 6)).toFixed(1);
+                      const y = (150 - (s.commission / maxRev) * 110 - 20).toFixed(1);
+                      return `${x},${y}`;
+                    });
+
+                    const pathRev = `M 0,150 L ${pointsRev.join(" L ")} L 500,150 Z`;
+                    const lineRev = `M ${pointsRev.join(" L ")}`;
+                    
+                    const pathComm = `M 0,150 L ${pointsComm.join(" L ")} L 500,150 Z`;
+                    const lineComm = `M ${pointsComm.join(" L ")}`;
+
+                    return (
+                      <div className="relative">
+                        <svg viewBox="0 0 500 150" className="w-full overflow-visible">
+                          <defs>
+                            <linearGradient id="colorRev" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.25}/>
+                              <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                            </linearGradient>
+                            <linearGradient id="colorComm" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.25}/>
+                              <stop offset="95%" stopColor="#f43f5e" stopOpacity={0}/>
+                            </linearGradient>
+                          </defs>
+
+                          {/* Grid Lines */}
+                          <line x1="0" y1="20" x2="500" y2="20" stroke="#f1f5f9" className="dark:stroke-slate-800" strokeDasharray="3,3" />
+                          <line x1="0" y1="75" x2="500" y2="75" stroke="#f1f5f9" className="dark:stroke-slate-800" strokeDasharray="3,3" />
+                          <line x1="0" y1="130" x2="500" y2="130" stroke="#e2e8f0" className="dark:stroke-slate-800" />
+
+                          {/* Area paths */}
+                          <path d={pathRev} fill="url(#colorRev)" />
+                          <path d={pathComm} fill="url(#colorComm)" />
+
+                          {/* Line paths */}
+                          <path d={lineRev} fill="none" stroke="#3b82f6" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                          <path d={lineComm} fill="none" stroke="#f43f5e" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+
+                          {/* Points / Dots */}
+                          {pointsRev.map((pt, idx) => {
+                            const [x, y] = pt.split(",");
+                            return (
+                              <g key={`dot-rev-${idx}`}>
+                                <circle cx={x} cy={y} r="4" fill="#3b82f6" stroke="#ffffff" strokeWidth="1.5" className="cursor-pointer hover:r-6 transition" />
+                                <text x={x} y={parseFloat(y) - 8} textAnchor="middle" className="text-[7px] font-bold fill-slate-500 dark:fill-slate-400">
+                                  {dailyStats[idx].revenue > 0 ? `${(dailyStats[idx].revenue / 1000).toFixed(0)}k` : ""}
+                                </text>
+                              </g>
+                            );
+                          })}
+
+                          {pointsComm.map((pt, idx) => {
+                            const [x, y] = pt.split(",");
+                            return (
+                              <circle key={`dot-comm-${idx}`} cx={x} cy={y} r="3" fill="#f43f5e" stroke="#ffffff" strokeWidth="1" className="cursor-pointer" />
+                            );
+                          })}
+                        </svg>
+
+                        {/* Date labels */}
+                        <div className="flex justify-between mt-2 px-1 text-[8px] font-bold text-slate-400">
+                          {dailyStats.map((s, idx) => {
+                            const d = new Date(s.date);
+                            return <span key={idx}>{d.getDate()}/{d.getMonth() + 1}</span>;
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {/* Column 3: Donut breakdown chart */}
+                <div className="bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm text-left flex flex-col justify-between">
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">📊 Trạng thái lớp học & Tài khoản</h4>
+                    <p className="text-[10px] text-slate-400 mt-0.5">Tỉ lệ lớp học và phân bổ thành viên</p>
+                  </div>
+
+                  {(() => {
+                    const appts = dashboardData.appointments || [];
+                    const tutors = dashboardData.tutors || [];
+                    const students = dashboardData.students || [];
+
+                    // Appts status breakdown
+                    let completed = 0;
+                    let holding = 0;
+                    let cancelled = 0;
+                    let others = 0;
+
+                    appts.forEach((a: any) => {
+                      if (a.status === "COMPLETED") completed++;
+                      else if (a.status === "CANCELLED") cancelled++;
+                      else if (a.payment_status === "HOLDING") holding++;
+                      else others++;
+                    });
+
+                    const totalAppts = appts.length || 1;
+                    const compPct = (completed / totalAppts) * 100;
+                    const holdPct = (holding / totalAppts) * 100;
+                    const cancPct = (cancelled / totalAppts) * 100;
+                    const otherPct = 100 - compPct - holdPct - cancPct;
+
+                    // User breakdown
+                    const totalUsers = tutors.length + students.length || 1;
+                    const tutorPct = (tutors.length / totalUsers) * 100;
+                    const studentPct = (students.length / totalUsers) * 100;
+
+                    return (
+                      <div className="grid grid-cols-2 gap-4 mt-2">
+                        {/* Gauge 1: Lớp học */}
+                        <div className="flex flex-col items-center">
+                          <div className="relative w-20 h-20">
+                            <svg viewBox="0 0 36 36" className="w-full h-full transform -rotate-90">
+                              <circle cx="18" cy="18" r="15.915" fill="none" stroke="#f1f5f9" className="dark:stroke-slate-800" strokeWidth="3" />
+                              
+                              {/* Completed segment */}
+                              {compPct > 0 && (
+                                <circle cx="18" cy="18" r="15.915" fill="none" stroke="#10b981" strokeWidth="3"
+                                  strokeDasharray={`${compPct} ${100 - compPct}`} strokeDashoffset={0} />
+                              )}
+                              {/* Holding segment */}
+                              {holdPct > 0 && (
+                                <circle cx="18" cy="18" r="15.915" fill="none" stroke="#3b82f6" strokeWidth="3"
+                                  strokeDasharray={`${holdPct} ${100 - holdPct}`} strokeDashoffset={-compPct} />
+                              )}
+                              {/* Cancelled segment */}
+                              {cancPct > 0 && (
+                                <circle cx="18" cy="18" r="15.915" fill="none" stroke="#ef4444" strokeWidth="3"
+                                  strokeDasharray={`${cancPct} ${100 - cancPct}`} strokeDashoffset={-(compPct + holdPct)} />
+                              )}
+                            </svg>
+                            <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+                              <span className="text-[11px] font-black text-slate-800 dark:text-white">{appts.length}</span>
+                              <span className="text-[7px] text-slate-400 font-bold uppercase">Lớp</span>
+                            </div>
+                          </div>
+                          
+                          <div className="mt-3 space-y-1 w-full text-[9px] font-semibold text-slate-500">
+                            <div className="flex items-center justify-between"><span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-[#10b981]"></span> Xong</span> <span>{completed}</span></div>
+                            <div className="flex items-center justify-between"><span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-[#3b82f6]"></span> Giữ tiền</span> <span>{holding}</span></div>
+                            <div className="flex items-center justify-between"><span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-[#ef4444]"></span> Hủy</span> <span>{cancelled}</span></div>
+                          </div>
+                        </div>
+
+                        {/* Gauge 2: Thành viên */}
+                        <div className="flex flex-col items-center">
+                          <div className="relative w-20 h-20">
+                            <svg viewBox="0 0 36 36" className="w-full h-full transform -rotate-90">
+                              <circle cx="18" cy="18" r="15.915" fill="none" stroke="#f1f5f9" className="dark:stroke-slate-800" strokeWidth="3" />
+                              <circle cx="18" cy="18" r="15.915" fill="none" stroke="#8b5cf6" strokeWidth="3"
+                                strokeDasharray={`${tutorPct} ${100 - tutorPct}`} strokeDashoffset={0} />
+                              <circle cx="18" cy="18" r="15.915" fill="none" stroke="#ec4899" strokeWidth="3"
+                                strokeDasharray={`${studentPct} ${100 - studentPct}`} strokeDashoffset={-tutorPct} />
+                            </svg>
+                            <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+                              <span className="text-[11px] font-black text-slate-800 dark:text-white">{tutors.length + students.length}</span>
+                              <span className="text-[7px] text-slate-400 font-bold uppercase">M.viên</span>
+                            </div>
+                          </div>
+
+                          <div className="mt-3 space-y-1 w-full text-[9px] font-semibold text-slate-500">
+                            <div className="flex items-center justify-between"><span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-[#8b5cf6]"></span> Gia sư</span> <span>{tutors.length}</span></div>
+                            <div className="flex items-center justify-between"><span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-[#ec4899]"></span> H.Sinh</span> <span>{students.length}</span></div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+
               {/* Quick Summary Charts/Info */}
               <div className="bg-slate-50 dark:bg-slate-900/40 p-4 border border-slate-200/60 dark:border-slate-800 rounded-2xl text-left text-xs leading-relaxed">
                 <span className="font-bold text-slate-600 dark:text-slate-350 block mb-1">💡 Hướng dẫn thống kê:</span>
@@ -1039,6 +1259,16 @@ export default function AdminTab({
                         🤝 Đề xuất deal chiết khấu hoa hồng: {pt.proposed_commission_percent}% (Hoa hồng hiện tại: {pt.commission_percent ?? 10}%)
                       </div>
                     )}
+                    <div className={`col-span-2 font-bold px-2 py-1 rounded ${
+                      pt.ekyc_status === "AUTO_ACCEPTED"
+                        ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300"
+                        : pt.ekyc_status === "MANUAL_REVIEW"
+                          ? "bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300"
+                          : "bg-slate-100 text-slate-500 dark:bg-slate-900 dark:text-slate-400"
+                    }`}>
+                      🧪 eKYC: {pt.ekyc_status === "AUTO_ACCEPTED" ? "Auto accept" : pt.ekyc_status === "MANUAL_REVIEW" ? "Duyệt tay" : "Chưa chạy"}
+                      {pt.ekyc_score !== null && pt.ekyc_score !== undefined ? ` - ${Number(pt.ekyc_score)}%` : ""}
+                    </div>
                   </div>
                   <div className="text-[10px] p-2 bg-white dark:bg-slate-900 rounded border dark:border-slate-800 text-left">
                     <span className="font-semibold text-slate-500">Giới thiệu:</span> {pt.bio}
@@ -1053,7 +1283,7 @@ export default function AdminTab({
                         {pt.documents.map((d: any, idx: number) => {
                           const isImage = d.mime_type ? d.mime_type.startsWith("image/") : (d.url && /\.(png|jpe?g|webp|gif)$/i.test(d.url));
                           const isDoc = d.original_name ? /\.(docx?)$/i.test(d.original_name) : (d.url && /\.(docx?)$/i.test(d.url));
-                          const fileUrl = d.url && d.url.startsWith("/") ? `http://localhost:5000${d.url}?token=${token}` : d.url;
+                          const fileUrl = d.url && d.url.startsWith("/") ? apiUrl(`${d.url}?token=${token}`) : d.url;
                           return (
                             <div
                               key={idx}

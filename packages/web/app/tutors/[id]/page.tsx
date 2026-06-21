@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getAvatarUrl } from "../../utils/avatar";
+import { apiUrl } from "../../utils/api";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -8,7 +9,7 @@ interface Props {
 
 async function getTutor(id: string) {
   try {
-    const res = await fetch(`http://localhost:5000/api/tutors/${id}`, { cache: "no-store" });
+    const res = await fetch(apiUrl(`/api/tutors/${id}`), { cache: "no-store" });
     if (!res.ok) return null;
     const json = await res.json();
     return json.success ? json.data : null;
@@ -19,7 +20,7 @@ async function getTutor(id: string) {
 
 async function getTutorReviews(id: string) {
   try {
-    const res = await fetch(`http://localhost:5000/api/tutors/${id}/reviews`, { cache: "no-store" });
+    const res = await fetch(apiUrl(`/api/tutors/${id}/reviews`), { cache: "no-store" });
     if (!res.ok) return [];
     const json = await res.json();
     return json.success ? json.data : [];

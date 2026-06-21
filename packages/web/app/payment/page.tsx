@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useMemo, useState, useRef } from "react";
 import { useSearchParams } from "next/navigation";
+import { apiUrl } from "../utils/api";
 
 type PaymentDetails = {
   paymentId: string;
@@ -83,7 +84,7 @@ function PaymentContent() {
   useEffect(() => {
     const loadBanks = async () => {
       try {
-        const res = await fetch("http://localhost:5000/api/payments/sepay/banks");
+        const res = await fetch(apiUrl("/api/payments/sepay/banks"));
         const json = await res.json();
         const list = json.data?.data || json.data?.banks || json.data || [];
         if (Array.isArray(list)) setBanks(list);
@@ -137,7 +138,7 @@ function PaymentContent() {
         if (appointmentId) body.appointmentId = appointmentId;
         if (topupId) body.topupId = Number(topupId);
 
-        const res = await fetch("http://localhost:5000/api/payments/qr", {
+        const res = await fetch(apiUrl("/api/payments/qr"), {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -172,7 +173,7 @@ function PaymentContent() {
     setPolling(true);
     pollRef.current = setInterval(async () => {
       try {
-        const res = await fetch(`http://localhost:5000/api/payments/${paymentId}/status${isTopup ? "?type=topup" : ""}`, {
+        const res = await fetch(apiUrl(`/api/payments/${paymentId}/status${isTopup ? "?type=topup" : ""}`), {
           headers: { Authorization: `Bearer ${token}` },
         });
         const json = await res.json();
@@ -192,7 +193,7 @@ function PaymentContent() {
     if (!paymentDetails) return;
     setSimulating(true);
     try {
-      const res = await fetch("http://localhost:5000/api/payments/sepay/mock-trigger", {
+      const res = await fetch(apiUrl("/api/payments/sepay/mock-trigger"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

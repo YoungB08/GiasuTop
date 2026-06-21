@@ -123,9 +123,9 @@ async function init() {
       console.log('🌱 Đang nạp danh sách tài liệu mẫu...');
       await connection.query(`
         INSERT INTO documents (title, file_url, grade_tag, type_tag, subject_tag, uploader_id, uploader_name, is_approved, download_count) VALUES
-        ('[Toán 11] - Đề kiểm tra học kỳ II chuyên đề Đạo hàm & Hình học', 'http://localhost:5000/uploads/docs/toan11_de2.pdf', 'Lớp 11', 'Cuối kì 2', 'Toán', '11111111-1111-1111-1111-111111111111', 'Admin', 'APPROVED', 1240),
-        ('Sách Bí Quyết Ôn Luyện Vật Lý 12 - CLB GiasuTop', 'http://localhost:5000/uploads/docs/sach_ly12.pdf', 'Lớp 12', 'Sách', 'Lý', '11111111-1111-1111-1111-111111111111', 'Admin', 'APPROVED', 8420),
-        ('Đề thi thử Đánh giá năng lực Đại học Quốc gia - Đề số 01', 'http://localhost:5000/uploads/docs/hsa_de1.pdf', 'Lớp 12', 'Tài liệu ôn thi', 'Toán', '11111111-1111-1111-1111-111111111111', 'Admin', 'APPROVED', 16890)
+        ('[Toán 11] - Đề kiểm tra học kỳ II chuyên đề Đạo hàm & Hình học', '/uploads/docs/toan11_de2.pdf', 'Lớp 11', 'Cuối kì 2', 'Toán', '11111111-1111-1111-1111-111111111111', 'Admin', 'APPROVED', 1240),
+        ('Sách Bí Quyết Ôn Luyện Vật Lý 12 - CLB GiasuTop', '/uploads/docs/sach_ly12.pdf', 'Lớp 12', 'Sách', 'Lý', '11111111-1111-1111-1111-111111111111', 'Admin', 'APPROVED', 8420),
+        ('Đề thi thử Đánh giá năng lực Đại học Quốc gia - Đề số 01', '/uploads/docs/hsa_de1.pdf', 'Lớp 12', 'Tài liệu ôn thi', 'Toán', '11111111-1111-1111-1111-111111111111', 'Admin', 'APPROVED', 16890)
       `);
       console.log('✅ Đã nạp danh sách tài liệu mẫu.');
     }

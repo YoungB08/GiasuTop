@@ -1,0 +1,815 @@
+⚠ Warning: Next.js inferred your workspace root, but it may not be correct.
+ We detected multiple lockfiles and selected the directory of D:\GiaSu-KNTech\package-lock.json as the root directory.
+ To silence this warning, set `turbopack.root` in your Next.js config, or consider removing one of the lockfiles if it's not needed.
+   See https://nextjs.org/docs/app/api-reference/config/next-config-js/turbopack#root-directory for more information.
+ Detected additional lockfiles: 
+   * D:\GiaSu-KNTech\packages\web\package-lock.json
+
+⚠ Fast Refresh had to perform a full reload due to a runtime error.
+⚠ Fast Refresh had to perform a full reload due to a runtime error.
+⚠ Found a change in next.config.ts. Restarting the server to apply the changes...
+⚠ Warning: Next.js inferred your workspace root, but it may not be correct.
+ We detected multiple lockfiles and selected the directory of D:\GiaSu-KNTech\package-lock.json as the root directory.
+ To silence this warning, set `turbopack.root` in your Next.js config, or consider removing one of the lockfiles if it's not needed.
+   See https://nextjs.org/docs/app/api-reference/config/next-config-js/turbopack#root-directory for more information.
+ Detected additional lockfiles: 
+   * D:\GiaSu-KNTech\packages\web\package-lock.json
+
+⚠ Found a change in next.config.ts. Restarting the server to apply the changes...
+⚠ Warning: Next.js inferred your workspace root, but it may not be correct.
+ We detected multiple lockfiles and selected the directory of D:\GiaSu-KNTech\package-lock.json as the root directory.
+ To silence this warning, set `turbopack.root` in your Next.js config, or consider removing one of the lockfiles if it's not needed.
+   See https://nextjs.org/docs/app/api-reference/config/next-config-js/turbopack#root-directory for more information.
+ Detected additional lockfiles: 
+   * D:\GiaSu-KNTech\packages\web\package-lock.json
+
+[browser] The final argument passed to useEffect changed size between renders. The order and size of this array must remain constant.
+
+Previous: [false, (socketId)=>{
+            peersRef.current[socketId]?.close();
+            delete peersRef.current[socketId];
+            delete remoteStreamsRef.current[socketId];
+            delete pendingIceRef.current[socketId];
+            delete makingOfferRef.current[socketId];
+            refreshPeerState();
+            refreshRemoteStreams();
+        }, (socketId, currentSocket = socketRef.current)=>{
+            if (peersRef.current[socketId]) return peersRef.current[socketId];
+            const pc = new RTCPeerConnection(ICE_SERVERS);
+            ensureTransceivers(pc);
+            pc.onicecandidate = ({
+                "useWebRTC.useCallback[createPeerConnection]": (event)=>{
+                    if (event.candidate && currentSocket) {
+                        currentSocket.emit("ice-candidate", {
+                            target: socketId,
+                            candidate: event.candidate
+                        });
+                    }
+                }
+            })["useWebRTC.useCallback[createPeerConnection]"];
+            pc.onconnectionstatechange = ({
+                "useWebRTC.useCallback[createPeerConnection]": ()=>{
+                    if ([
+                        "failed",
+                        "closed",
+                        "disconnected"
+                    ].includes(pc.connectionState)) {
+                        if (pc.connectionState === "failed") {
+                            pc.restartIce?.();
+                        }
+                    }
+                }
+            })["useWebRTC.useCallback[createPeerConnection]"];
+            pc.ontrack = ({
+                "useWebRTC.useCallback[createPeerConnection]": (event)=>{
+                    let stream = event.streams[0] || remoteStreamsRef.current[socketId];
+                    if (!stream) stream = new MediaStream();
+                    if (!stream.getTracks().some({
+                        "useWebRTC.useCallback[createPeerConnection]": (track)=>track.id === event.track.id
+                    }["useWebRTC.useCallback[createPeerConnection]"])) {
+                        stream.addTrack(event.track);
+                    }
+                    remoteStreamsRef.current[socketId] = stream;
+                    refreshRemoteStreams();
+                }
+            })["useWebRTC.useCallback[createPeerConnection]"];
+            peersRef.current[socketId] = pc;
+            refreshPeerState();
+            void syncTracksToPeer(pc);
+            return pc;
+        }, async (socketId, pc)=>{
+            const pending = pendingIceRef.current[socketId] || [];
+            if (!pending.length || !pc.remoteDescription) return;
+            delete pendingIceRef.current[socketId];
+            for (const candidate of pending){
+                try {
+                    await pc.addIceCandidate(new RTCIceCandidate(candidate));
+                } catch (error) {
+                    console.warn("Cannot add queued ICE candidate", error);
+                }
+            }
+        }, preview-room, ADMIN, async (targetSocketId)=>{
+            const currentSocket = socketRef.current;
+            if (!currentSocket || makingOfferRef.current[targetSocketId]) return;
+            const pc = createPeerConnection(targetSocketId, currentSocket);
+            await syncTracksToPeer(pc);
+            if (pc.signalingState !== "stable") return;
+            try {
+                makingOfferRef.current[targetSocketId] = true;
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+                currentSocket.emit("offer", {
+                    target: targetSocketId,
+                    offer: pc.localDescription
+                });
+            } finally{
+                makingOfferRef.current[targetSocketId] = false;
+            }
+        }, async (enabled)=>{
+            try {
+                setMediaError(null);
+                if (enabled) {
+                    const track = await ensureAudioTrack();
+                    track.enabled = true;
+                    isMicOnRef.current = true;
+                    setIsMicOn(true);
+                    await refreshDevices();
+                } else {
+                    stopTracks(localStreamRef.current, "audio");
+                    isMicOnRef.current = false;
+                    setIsMicOn(false);
+                }
+                await syncTracksToAllPeers();
+                publishMediaState({
+                    isMicOn: enabled
+                });
+            } catch (error) {
+                setMediaError(error instanceof Error ? error.message : "Khong the bat micro.");
+                isMicOnRef.current = false;
+                setIsMicOn(false);
+                publishMediaState({
+                    isMicOn: false
+                });
+            }
+        }, (stream, kind)=>{
+            if (!stream) return;
+            const tracks = kind ? stream.getTracks().filter({
+                "useWebRTC.useCallback[stopTracks]": (track)=>track.kind === kind
+            }["useWebRTC.useCallback[stopTracks]"]) : stream.getTracks();
+            tracks.forEach({
+                "useWebRTC.useCallback[stopTracks]": (track)=>{
+                    track.stop();
+                    stream.removeTrack(track);
+                }
+            }["useWebRTC.useCallback[stopTracks]"]);
+        }, async (pc)=>{
+            const audioSender = getSender(pc, "audio");
+            const videoSender = getSender(pc, "video");
+            const audioTrack = isMicOnRef.current ? getLocalAudioTrack() : null;
+            const videoTrack = getOutgoingVideoTrack();
+            if (audioSender) await audioSender.replaceTrack(audioTrack);
+            if (videoSender) await videoSender.replaceTrack(videoTrack);
+        }, 11111111-1111-1111-1111-111111111111, Admin KNTech]
+Incoming: [false, (socketId)=>{
+            peersRef.current[socketId]?.close();
+            delete peersRef.current[socketId];
+            delete remoteStreamsRef.current[socketId];
+            delete pendingIceRef.current[socketId];
+            delete makingOfferRef.current[socketId];
+            refreshPeerState();
+            refreshRemoteStreams();
+        }, (socketId, currentSocket = socketRef.current)=>{
+            if (peersRef.current[socketId]) return peersRef.current[socketId];
+            const pc = new RTCPeerConnection(ICE_SERVERS);
+            ensureTransceivers(pc);
+            pc.onicecandidate = ({
+                "useWebRTC.useCallback[createPeerConnection]": (event)=>{
+                    if (event.candidate && currentSocket) {
+                        currentSocket.emit("ice-candidate", {
+                            target: socketId,
+                            candidate: event.candidate
+                        });
+                    }
+                }
+            })["useWebRTC.useCallback[createPeerConnection]"];
+            pc.onconnectionstatechange = ({
+                "useWebRTC.useCallback[createPeerConnection]": ()=>{
+                    if ([
+                        "failed",
+                        "closed",
+                        "disconnected"
+                    ].includes(pc.connectionState)) {
+                        if (pc.connectionState === "failed") {
+                            pc.restartIce?.();
+                        }
+                    }
+                }
+            })["useWebRTC.useCallback[createPeerConnection]"];
+            pc.ontrack = ({
+                "useWebRTC.useCallback[createPeerConnection]": (event)=>{
+                    let stream = event.streams[0] || remoteStreamsRef.current[socketId];
+                    if (!stream) stream = new MediaStream();
+                    if (!stream.getTracks().some({
+                        "useWebRTC.useCallback[createPeerConnection]": (track)=>track.id === event.track.id
+                    }["useWebRTC.useCallback[createPeerConnection]"])) {
+                        stream.addTrack(event.track);
+                    }
+                    remoteStreamsRef.current[socketId] = stream;
+                    refreshRemoteStreams();
+                }
+            })["useWebRTC.useCallback[createPeerConnection]"];
+            peersRef.current[socketId] = pc;
+            refreshPeerState();
+            void syncTracksToPeer(pc);
+            return pc;
+        }, (nextParticipants, currentSocket = socketRef.current)=>{
+            const selfId = currentSocket?.id || socketRef.current?.id || selfSocketId;
+            nextParticipants.forEach({
+                "useWebRTC.useCallback[ensureParticipantPeers]": (participant)=>{
+                    const peerSocketId = participant.socketId;
+                    if (!peerSocketId || peerSocketId === selfId) return;
+                    const pc = createPeerConnection(peerSocketId, currentSocket);
+                    const shouldRecoverOffer = !pc.localDescription && !pc.remoteDescription && isPolitePeer(selfId, peerSocketId);
+                    if (shouldRecoverOffer) {
+                        globalThis.setTimeout({
+                            "useWebRTC.useCallback[ensureParticipantPeers]": ()=>{
+                                const currentPc = peersRef.current[peerSocketId];
+                                if (currentPc && !currentPc.localDescription && !currentPc.remoteDescription) {
+                                    void sendOffer(peerSocketId).catch({
+                                        "useWebRTC.useCallback[ensureParticipantPeers]": (error)=>console.warn("Cannot recover WebRTC offer", error)
+                                    }["useWebRTC.useCallback[ensureParticipantPeers]"]);
+                                }
+                            }
+                        }["useWebRTC.useCallback[ensureParticipantPeers]"], 700);
+                    }
+                }
+            }["useWebRTC.useCallback[ensureParticipantPeers]"]);
+        }, async (socketId, pc)=>{
+            const pending = pendingIceRef.current[socketId] || [];
+            if (!pending.length || !pc.remoteDescription) return;
+            delete pendingIceRef.current[socketId];
+            for (const candidate of pending){
+                try {
+                    await pc.addIceCandidate(new RTCIceCandidate(candidate));
+                } catch (error) {
+                    console.warn("Cannot add queued ICE candidate", error);
+                }
+            }
+        }, preview-room, ADMIN, async (targetSocketId)=>{
+            const currentSocket = socketRef.current;
+            if (!currentSocket || makingOfferRef.current[targetSocketId]) return;
+            const pc = createPeerConnection(targetSocketId, currentSocket);
+            await syncTracksToPeer(pc);
+            if (pc.signalingState !== "stable") return;
+            try {
+                makingOfferRef.current[targetSocketId] = true;
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+                currentSocket.emit("offer", {
+                    target: targetSocketId,
+                    offer: pc.localDescription
+                });
+            } finally{
+                makingOfferRef.current[targetSocketId] = false;
+            }
+        }, async (enabled)=>{
+            try {
+                setMediaError(null);
+                if (enabled) {
+                    const track = await ensureAudioTrack();
+                    track.enabled = true;
+                    isMicOnRef.current = true;
+                    setIsMicOn(true);
+                    await refreshDevices();
+                } else {
+                    stopTracks(localStreamRef.current, "audio");
+                    isMicOnRef.current = false;
+                    setIsMicOn(false);
+                }
+                await syncTracksToAllPeers();
+                publishMediaState({
+                    isMicOn: enabled
+                });
+            } catch (error) {
+                setMediaError(error instanceof Error ? error.message : "Khong the bat micro.");
+                isMicOnRef.current = false;
+                setIsMicOn(false);
+                publishMediaState({
+                    isMicOn: false
+                });
+            }
+        }, (stream, kind)=>{
+            if (!stream) return;
+            const tracks = kind ? stream.getTracks().filter({
+                "useWebRTC.useCallback[stopTracks]": (track)=>track.kind === kind
+            }["useWebRTC.useCallback[stopTracks]"]) : stream.getTracks();
+            tracks.forEach({
+                "useWebRTC.useCallback[stopTracks]": (track)=>{
+                    track.stop();
+                    stream.removeTrack(track);
+                }
+            }["useWebRTC.useCallback[stopTracks]"]);
+        }, async (pc)=>{
+            const audioSender = getSender(pc, "audio");
+            const videoSender = getSender(pc, "video");
+            const audioTrack = isMicOnRef.current ? getLocalAudioTrack() : null;
+            const videoTrack = getOutgoingVideoTrack();
+            if (audioSender) await audioSender.replaceTrack(audioTrack);
+            if (videoSender) await videoSender.replaceTrack(videoTrack);
+        }, 11111111-1111-1111-1111-111111111111, Admin KNTech] 
+    at useWebRTC (app/hooks/useWebRTC.ts:580:12)
+    at ClassroomView (app/components/modals/ClassroomView.tsx:106:16)
+    at Set.forEach (<anonymous>)
+  578 |   }, [localPreviewStream]);
+  579 |
+> 580 |   useEffect(() => {
+      |            ^
+  581 |     if (!autoJoin || !roomId || !userId) return;
+  582 |
+  583 |     setConnectionState("connecting"); (app/hooks/useWebRTC.ts:580:12)
+[browser] The final argument passed to useEffect changed size between renders. The order and size of this array must remain constant.
+
+Previous: [false, (socketId)=>{
+            peersRef.current[socketId]?.close();
+            delete peersRef.current[socketId];
+            delete remoteStreamsRef.current[socketId];
+            delete pendingIceRef.current[socketId];
+            delete makingOfferRef.current[socketId];
+            refreshPeerState();
+            refreshRemoteStreams();
+        }, (socketId, currentSocket = socketRef.current)=>{
+            if (peersRef.current[socketId]) return peersRef.current[socketId];
+            const pc = new RTCPeerConnection(ICE_SERVERS);
+            ensureTransceivers(pc);
+            pc.onicecandidate = ({
+                "useWebRTC.useCallback[createPeerConnection]": (event)=>{
+                    if (event.candidate && currentSocket) {
+                        currentSocket.emit("ice-candidate", {
+                            target: socketId,
+                            candidate: event.candidate
+                        });
+                    }
+                }
+            })["useWebRTC.useCallback[createPeerConnection]"];
+            pc.onconnectionstatechange = ({
+                "useWebRTC.useCallback[createPeerConnection]": ()=>{
+                    if ([
+                        "failed",
+                        "closed",
+                        "disconnected"
+                    ].includes(pc.connectionState)) {
+                        if (pc.connectionState === "failed") {
+                            pc.restartIce?.();
+                        }
+                    }
+                }
+            })["useWebRTC.useCallback[createPeerConnection]"];
+            pc.ontrack = ({
+                "useWebRTC.useCallback[createPeerConnection]": (event)=>{
+                    let stream = event.streams[0] || remoteStreamsRef.current[socketId];
+                    if (!stream) stream = new MediaStream();
+                    if (!stream.getTracks().some({
+                        "useWebRTC.useCallback[createPeerConnection]": (track)=>track.id === event.track.id
+                    }["useWebRTC.useCallback[createPeerConnection]"])) {
+                        stream.addTrack(event.track);
+                    }
+                    remoteStreamsRef.current[socketId] = stream;
+                    refreshRemoteStreams();
+                }
+            })["useWebRTC.useCallback[createPeerConnection]"];
+            peersRef.current[socketId] = pc;
+            refreshPeerState();
+            void syncTracksToPeer(pc);
+            return pc;
+        }, async (socketId, pc)=>{
+            const pending = pendingIceRef.current[socketId] || [];
+            if (!pending.length || !pc.remoteDescription) return;
+            delete pendingIceRef.current[socketId];
+            for (const candidate of pending){
+                try {
+                    await pc.addIceCandidate(new RTCIceCandidate(candidate));
+                } catch (error) {
+                    console.warn("Cannot add queued ICE candidate", error);
+                }
+            }
+        }, preview-room, TUTOR, async (targetSocketId)=>{
+            const currentSocket = socketRef.current;
+            if (!currentSocket || makingOfferRef.current[targetSocketId]) return;
+            const pc = createPeerConnection(targetSocketId, currentSocket);
+            await syncTracksToPeer(pc);
+            if (pc.signalingState !== "stable") return;
+            try {
+                makingOfferRef.current[targetSocketId] = true;
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+                currentSocket.emit("offer", {
+                    target: targetSocketId,
+                    offer: pc.localDescription
+                });
+            } finally{
+                makingOfferRef.current[targetSocketId] = false;
+            }
+        }, async (enabled)=>{
+            try {
+                setMediaError(null);
+                if (enabled) {
+                    const track = await ensureAudioTrack();
+                    track.enabled = true;
+                    isMicOnRef.current = true;
+                    setIsMicOn(true);
+                    await refreshDevices();
+                } else {
+                    stopTracks(localStreamRef.current, "audio");
+                    isMicOnRef.current = false;
+                    setIsMicOn(false);
+                }
+                await syncTracksToAllPeers();
+                publishMediaState({
+                    isMicOn: enabled
+                });
+            } catch (error) {
+                setMediaError(error instanceof Error ? error.message : "Khong the bat micro.");
+                isMicOnRef.current = false;
+                setIsMicOn(false);
+                publishMediaState({
+                    isMicOn: false
+                });
+            }
+        }, (stream, kind)=>{
+            if (!stream) return;
+            const tracks = kind ? stream.getTracks().filter({
+                "useWebRTC.useCallback[stopTracks]": (track)=>track.kind === kind
+            }["useWebRTC.useCallback[stopTracks]"]) : stream.getTracks();
+            tracks.forEach({
+                "useWebRTC.useCallback[stopTracks]": (track)=>{
+                    track.stop();
+                    stream.removeTrack(track);
+                }
+            }["useWebRTC.useCallback[stopTracks]"]);
+        }, async (pc)=>{
+            const audioSender = getSender(pc, "audio");
+            const videoSender = getSender(pc, "video");
+            const audioTrack = isMicOnRef.current ? getLocalAudioTrack() : null;
+            const videoTrack = getOutgoingVideoTrack();
+            if (audioSender) await audioSender.replaceTrack(audioTrack);
+            if (videoSender) await videoSender.replaceTrack(videoTrack);
+        }, c8905277-baec-468f-bcd2-ceb19c93dbf7, Trần Khôi Bi]
+Incoming: [false, (socketId)=>{
+            peersRef.current[socketId]?.close();
+            delete peersRef.current[socketId];
+            delete remoteStreamsRef.current[socketId];
+            delete pendingIceRef.current[socketId];
+            delete makingOfferRef.current[socketId];
+            refreshPeerState();
+            refreshRemoteStreams();
+        }, (socketId, currentSocket = socketRef.current)=>{
+            if (peersRef.current[socketId]) return peersRef.current[socketId];
+            const pc = new RTCPeerConnection(ICE_SERVERS);
+            ensureTransceivers(pc);
+            pc.onicecandidate = ({
+                "useWebRTC.useCallback[createPeerConnection]": (event)=>{
+                    if (event.candidate && currentSocket) {
+                        currentSocket.emit("ice-candidate", {
+                            target: socketId,
+                            candidate: event.candidate
+                        });
+                    }
+                }
+            })["useWebRTC.useCallback[createPeerConnection]"];
+            pc.onconnectionstatechange = ({
+                "useWebRTC.useCallback[createPeerConnection]": ()=>{
+                    if ([
+                        "failed",
+                        "closed",
+                        "disconnected"
+                    ].includes(pc.connectionState)) {
+                        if (pc.connectionState === "failed") {
+                            pc.restartIce?.();
+                        }
+                    }
+                }
+            })["useWebRTC.useCallback[createPeerConnection]"];
+            pc.ontrack = ({
+                "useWebRTC.useCallback[createPeerConnection]": (event)=>{
+                    let stream = event.streams[0] || remoteStreamsRef.current[socketId];
+                    if (!stream) stream = new MediaStream();
+                    if (!stream.getTracks().some({
+                        "useWebRTC.useCallback[createPeerConnection]": (track)=>track.id === event.track.id
+                    }["useWebRTC.useCallback[createPeerConnection]"])) {
+                        stream.addTrack(event.track);
+                    }
+                    remoteStreamsRef.current[socketId] = stream;
+                    refreshRemoteStreams();
+                }
+            })["useWebRTC.useCallback[createPeerConnection]"];
+            peersRef.current[socketId] = pc;
+            refreshPeerState();
+            void syncTracksToPeer(pc);
+            return pc;
+        }, (nextParticipants, currentSocket = socketRef.current)=>{
+            const selfId = currentSocket?.id || socketRef.current?.id || selfSocketId;
+            nextParticipants.forEach({
+                "useWebRTC.useCallback[ensureParticipantPeers]": (participant)=>{
+                    const peerSocketId = participant.socketId;
+                    if (!peerSocketId || peerSocketId === selfId) return;
+                    const pc = createPeerConnection(peerSocketId, currentSocket);
+                    const shouldRecoverOffer = !pc.localDescription && !pc.remoteDescription && isPolitePeer(selfId, peerSocketId);
+                    if (shouldRecoverOffer) {
+                        globalThis.setTimeout({
+                            "useWebRTC.useCallback[ensureParticipantPeers]": ()=>{
+                                const currentPc = peersRef.current[peerSocketId];
+                                if (currentPc && !currentPc.localDescription && !currentPc.remoteDescription) {
+                                    void sendOffer(peerSocketId).catch({
+                                        "useWebRTC.useCallback[ensureParticipantPeers]": (error)=>console.warn("Cannot recover WebRTC offer", error)
+                                    }["useWebRTC.useCallback[ensureParticipantPeers]"]);
+                                }
+                            }
+                        }["useWebRTC.useCallback[ensureParticipantPeers]"], 700);
+                    }
+                }
+            }["useWebRTC.useCallback[ensureParticipantPeers]"]);
+        }, async (socketId, pc)=>{
+            const pending = pendingIceRef.current[socketId] || [];
+            if (!pending.length || !pc.remoteDescription) return;
+            delete pendingIceRef.current[socketId];
+            for (const candidate of pending){
+                try {
+                    await pc.addIceCandidate(new RTCIceCandidate(candidate));
+                } catch (error) {
+                    console.warn("Cannot add queued ICE candidate", error);
+                }
+            }
+        }, preview-room, TUTOR, async (targetSocketId)=>{
+            const currentSocket = socketRef.current;
+            if (!currentSocket || makingOfferRef.current[targetSocketId]) return;
+            const pc = createPeerConnection(targetSocketId, currentSocket);
+            await syncTracksToPeer(pc);
+            if (pc.signalingState !== "stable") return;
+            try {
+                makingOfferRef.current[targetSocketId] = true;
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+                currentSocket.emit("offer", {
+                    target: targetSocketId,
+                    offer: pc.localDescription
+                });
+            } finally{
+                makingOfferRef.current[targetSocketId] = false;
+            }
+        }, async (enabled)=>{
+            try {
+                setMediaError(null);
+                if (enabled) {
+                    const track = await ensureAudioTrack();
+                    track.enabled = true;
+                    isMicOnRef.current = true;
+                    setIsMicOn(true);
+                    await refreshDevices();
+                } else {
+                    stopTracks(localStreamRef.current, "audio");
+                    isMicOnRef.current = false;
+                    setIsMicOn(false);
+                }
+                await syncTracksToAllPeers();
+                publishMediaState({
+                    isMicOn: enabled
+                });
+            } catch (error) {
+                setMediaError(error instanceof Error ? error.message : "Khong the bat micro.");
+                isMicOnRef.current = false;
+                setIsMicOn(false);
+                publishMediaState({
+                    isMicOn: false
+                });
+            }
+        }, (stream, kind)=>{
+            if (!stream) return;
+            const tracks = kind ? stream.getTracks().filter({
+                "useWebRTC.useCallback[stopTracks]": (track)=>track.kind === kind
+            }["useWebRTC.useCallback[stopTracks]"]) : stream.getTracks();
+            tracks.forEach({
+                "useWebRTC.useCallback[stopTracks]": (track)=>{
+                    track.stop();
+                    stream.removeTrack(track);
+                }
+            }["useWebRTC.useCallback[stopTracks]"]);
+        }, async (pc)=>{
+            const audioSender = getSender(pc, "audio");
+            const videoSender = getSender(pc, "video");
+            const audioTrack = isMicOnRef.current ? getLocalAudioTrack() : null;
+            const videoTrack = getOutgoingVideoTrack();
+            if (audioSender) await audioSender.replaceTrack(audioTrack);
+            if (videoSender) await videoSender.replaceTrack(videoTrack);
+        }, c8905277-baec-468f-bcd2-ceb19c93dbf7, Trần Khôi Bi] 
+    at useWebRTC (app/hooks/useWebRTC.ts:580:12)
+    at ClassroomView (app/components/modals/ClassroomView.tsx:106:16)
+    at Set.forEach (<anonymous>)
+  578 |   }, [localPreviewStream]);
+  579 |
+> 580 |   useEffect(() => {
+      |            ^
+  581 |     if (!autoJoin || !roomId || !userId) return;
+  582 |
+  583 |     setConnectionState("connecting"); (app/hooks/useWebRTC.ts:580:12)
+[browser] Lỗi tải lịch sử chat: TypeError: Failed to fetch
+    at MessengerChat.useCallback[fetchMessages] (file://D:/GiaSu-KNTech/packages/web/.next/dev/static/chunks/packages_web_app_components_1jgvrm6._.js:2502:39)
+    at MessengerChat.useEffect.i (file://D:/GiaSu-KNTech/packages/web/.next/dev/static/chunks/packages_web_app_components_1jgvrm6._.js:2668:50) (file://D:/GiaSu-KNTech/packages/web/.next/dev/static/chunks/packages_web_app_components_1jgvrm6._.js:2539:25)
+[browser] Lỗi tải danh bạ nhắn tin: TypeError: Failed to fetch
+    at MessengerChat.useCallback[fetchContacts] (file://D:/GiaSu-KNTech/packages/web/.next/dev/static/chunks/packages_web_app_components_1jgvrm6._.js:2476:35) (file://D:/GiaSu-KNTech/packages/web/.next/dev/static/chunks/packages_web_app_components_1jgvrm6._.js:2489:25)
+[browser] Lỗi tải dữ liệu người dùng: TypeError: Failed to fetch
+    at fetchUserData (app/components/HomeScreen.tsx:1223:27)
+    at HomeScreen.useEffect.onFocus (app/components/HomeScreen.tsx:1332:9)
+  1221 |     try {
+  1222 |       // Fetch latest profile details
+> 1223 |       const meRes = await fetch(apiUrl("/api/users/me"), {
+       |                           ^
+  1224 |         headers: { Authorization: `Bearer ${token}` },
+  1225 |       });
+  1226 |       const meJson = await meRes.json(); (app/components/HomeScreen.tsx:1255:15)
+[browser] Lỗi tải lịch sử chat: TypeError: Failed to fetch
+    at MessengerChat.useCallback[fetchMessages] (file://D:/GiaSu-KNTech/packages/web/.next/dev/static/chunks/packages_web_app_components_1jgvrm6._.js:2502:39)
+    at MessengerChat.useEffect.i (file://D:/GiaSu-KNTech/packages/web/.next/dev/static/chunks/packages_web_app_components_1jgvrm6._.js:2668:50) (file://D:/GiaSu-KNTech/packages/web/.next/dev/static/chunks/packages_web_app_components_1jgvrm6._.js:2539:25)
+[browser] Lỗi tải tin nhắn: TypeError: Failed to fetch
+    at fetchChats (app/components/HomeScreen.tsx:776:9)
+  774 |
+  775 |   const fetchChats = async () => {
+> 776 |     try {
+      |         ^
+  777 |       const res = await fetch(apiUrl("/api/chats"));
+  778 |       const json = await res.json();
+  779 |       if (json.success) { (app/components/HomeScreen.tsx:782:17)
+[browser] Lỗi tải môn học: TypeError: Failed to fetch
+    at fetchSubjects (app/components/HomeScreen.tsx:840:25)
+    at HomeScreen.useEffect (app/components/HomeScreen.tsx:1432:36)
+  838 |   const fetchSubjects = async () => {
+  839 |     try {
+> 840 |       const res = await fetch(apiUrl("/api/subjects"));
+      |                         ^
+  841 |       const json = await res.json();
+  842 |       if (json.success) {
+  843 |         setDbSubjects(json.data); (app/components/HomeScreen.tsx:848:15)
+[browser] Lỗi tải hồ sơ gia sư: TypeError: Failed to fetch
+    at fetchPendingTutors (app/components/HomeScreen.tsx:1348:25)
+    at HomeScreen.useEffect (app/components/HomeScreen.tsx:1433:39)
+  1346 |     setLoadingPending(true);
+  1347 |     try {
+> 1348 |       const res = await fetch(apiUrl("/api/admin/tutors/pending"), {
+       |                         ^
+  1349 |         headers: { Authorization: `Bearer ${token}` },
+  1350 |       });
+  1351 |       const json = await res.json(); (app/components/HomeScreen.tsx:1356:15)
+[browser] Lỗi tải danh bạ nhắn tin: TypeError: Failed to fetch
+    at MessengerChat.useCallback[fetchContacts] (file://D:/GiaSu-KNTech/packages/web/.next/dev/static/chunks/packages_web_app_components_1jgvrm6._.js:2476:35) (file://D:/GiaSu-KNTech/packages/web/.next/dev/static/chunks/packages_web_app_components_1jgvrm6._.js:2489:25)
+[browser] Lỗi tải lịch sử chat: TypeError: Failed to fetch
+    at MessengerChat.useCallback[fetchMessages] (file://D:/GiaSu-KNTech/packages/web/.next/dev/static/chunks/packages_web_app_components_1jgvrm6._.js:2502:39)
+    at MessengerChat.useEffect.i (file://D:/GiaSu-KNTech/packages/web/.next/dev/static/chunks/packages_web_app_components_1jgvrm6._.js:2668:50) (file://D:/GiaSu-KNTech/packages/web/.next/dev/static/chunks/packages_web_app_components_1jgvrm6._.js:2539:25)
+[browser] Lỗi tải tin nhắn: TypeError: Failed to fetch
+    at fetchChats (app/components/HomeScreen.tsx:776:9)
+  774 |
+  775 |   const fetchChats = async () => {
+> 776 |     try {
+      |         ^
+  777 |       const res = await fetch(apiUrl("/api/chats"));
+  778 |       const json = await res.json();
+  779 |       if (json.success) { (app/components/HomeScreen.tsx:782:17)
+[browser] Lỗi tải tin nhắn: TypeError: Failed to fetch
+    at fetchChats (app/components/HomeScreen.tsx:776:9)
+  774 |
+  775 |   const fetchChats = async () => {
+> 776 |     try {
+      |         ^
+  777 |       const res = await fetch(apiUrl("/api/chats"));
+  778 |       const json = await res.json();
+  779 |       if (json.success) { (app/components/HomeScreen.tsx:782:17)
+[browser] Lỗi tải danh bạ nhắn tin: TypeError: Failed to fetch
+    at MessengerChat.useCallback[fetchContacts] (file://D:/GiaSu-KNTech/packages/web/.next/dev/static/chunks/packages_web_app_components_1jgvrm6._.js:2476:35) (file://D:/GiaSu-KNTech/packages/web/.next/dev/static/chunks/packages_web_app_components_1jgvrm6._.js:2489:25)
+[browser] Lỗi tải lịch sử chat: TypeError: Failed to fetch
+    at MessengerChat.useCallback[fetchMessages] (file://D:/GiaSu-KNTech/packages/web/.next/dev/static/chunks/packages_web_app_components_1jgvrm6._.js:2502:39)
+    at MessengerChat.useEffect.i (file://D:/GiaSu-KNTech/packages/web/.next/dev/static/chunks/packages_web_app_components_1jgvrm6._.js:2668:50) (file://D:/GiaSu-KNTech/packages/web/.next/dev/static/chunks/packages_web_app_components_1jgvrm6._.js:2539:25)
+[browser] Lỗi tải môn học: TypeError: Failed to fetch
+    at fetchSubjects (app/components/HomeScreen.tsx:840:25)
+    at HomeScreen.useEffect (app/components/HomeScreen.tsx:855:5)
+  838 |   const fetchSubjects = async () => {
+  839 |     try {
+> 840 |       const res = await fetch(apiUrl("/api/subjects"));
+      |                         ^
+  841 |       const json = await res.json();
+  842 |       if (json.success) {
+  843 |         setDbSubjects(json.data); (app/components/HomeScreen.tsx:848:15)
+[browser] Lỗi tải tin tức: TypeError: Failed to fetch
+    at fetchNews (app/components/HomeScreen.tsx:737:25)
+    at HomeScreen.useEffect (app/components/HomeScreen.tsx:854:5)
+  735 |   const fetchNews = async () => {
+  736 |     try {
+> 737 |       const res = await fetch(apiUrl("/api/news"));
+      |                         ^
+  738 |       const json = await res.json();
+  739 |       if (json.success) {
+  740 |         setNews(json.data); (app/components/HomeScreen.tsx:743:15)
+[browser] Loi tai danh sach ngan hang: TypeError: Failed to fetch
+    at fetchSepayBanks (app/components/HomeScreen.tsx:789:25)
+    at HomeScreen.useEffect (app/components/HomeScreen.tsx:856:5)
+  787 |   const fetchSepayBanks = async () => {
+  788 |     try {
+> 789 |       const res = await fetch(apiUrl("/api/payments/sepay/banks"));
+      |                         ^
+  790 |       const json = await res.json();
+  791 |       const list = json.data?.data || json.data?.banks || json.data || [];
+  792 |       if (Array.isArray(list)) { (app/components/HomeScreen.tsx:802:15)
+[browser] Lỗi tải gia sư: TypeError: Failed to fetch
+    at fetchTutors (app/components/HomeScreen.tsx:1027:25)
+    at HomeScreen.useEffect (app/components/HomeScreen.tsx:1040:5)
+  1025 |     setLoadingTutors(true);
+  1026 |     try {
+> 1027 |       const res = await fetch(apiUrl("/api/tutors"));
+       |                         ^
+  1028 |       const json = await res.json();
+  1029 |       if (json.success) {
+  1030 |         setTutors(json.data); (app/components/HomeScreen.tsx:1033:15)
+[browser] Lỗi tải thông báo: TypeError: Failed to fetch
+    at fetchNotifications (app/components/HomeScreen.tsx:886:25)
+    at HomeScreen.useEffect (app/components/HomeScreen.tsx:998:5)
+  884 |     if (!token) return;
+  885 |     try {
+> 886 |       const res = await fetch(apiUrl("/api/notifications?limit=80"), {
+      |                         ^
+  887 |         headers: { Authorization: `Bearer ${token}` },
+  888 |       });
+  889 |       const json = await res.json(); (app/components/HomeScreen.tsx:895:15)
+[browser] Lỗi tải đề xuất chiết khấu: TypeError: Failed to fetch
+    at fetchPendingCommissions (app/components/HomeScreen.tsx:1087:25)
+    at HomeScreen.useEffect (app/components/HomeScreen.tsx:1171:7)
+  1085 |     setLoadingCommissions(true);
+  1086 |     try {
+> 1087 |       const res = await fetch(apiUrl("/api/admin/commissions/pending"), {
+       |                         ^
+  1088 |         headers: { Authorization: `Bearer ${token}` },
+  1089 |       });
+  1090 |       const json = await res.json(); (app/components/HomeScreen.tsx:1095:15)
+[browser] Lỗi tải dữ liệu người dùng: TypeError: Failed to fetch
+    at fetchUserData (app/components/HomeScreen.tsx:1223:27)
+    at HomeScreen.useEffect (app/components/HomeScreen.tsx:1329:7)
+  1221 |     try {
+  1222 |       // Fetch latest profile details
+> 1223 |       const meRes = await fetch(apiUrl("/api/users/me"), {
+       |                           ^
+  1224 |         headers: { Authorization: `Bearer ${token}` },
+  1225 |       });
+  1226 |       const meJson = await meRes.json(); (app/components/HomeScreen.tsx:1255:15)
+[browser] Lỗi kiểm tra trạng thái tài khoản: TypeError: Failed to fetch
+    at checkUserStatus (app/components/HomeScreen.tsx:2504:25)
+    at HomeScreen.useEffect (app/components/HomeScreen.tsx:2524:7)
+  2502 |     if (!token) return;
+  2503 |     try {
+> 2504 |       const res = await fetch(apiUrl("/api/users/me"), {
+       |                         ^
+  2505 |         headers: { Authorization: `Bearer ${token}` },
+  2506 |       });
+  2507 |       const json = await res.json(); (app/components/HomeScreen.tsx:2518:15)
+[browser] Lỗi tải tài liệu: TypeError: Failed to fetch
+    at fetchDocuments (app/components/HomeScreen.tsx:759:25)
+  757 |         pageSize: String(docPageSize),
+  758 |       });
+> 759 |       const res = await fetch(apiUrl(`/api/documents?${params.toString()}`));
+      |                         ^
+  760 |       const json = await res.json();
+  761 |       if (json.success) {
+  762 |         setDocuments(json.data); (app/components/HomeScreen.tsx:769:15)
+[browser] Lỗi tải môn học: TypeError: Failed to fetch
+    at fetchSubjects (app/components/HomeScreen.tsx:840:25)
+    at HomeScreen.useEffect (app/components/HomeScreen.tsx:1432:36)
+  838 |   const fetchSubjects = async () => {
+  839 |     try {
+> 840 |       const res = await fetch(apiUrl("/api/subjects"));
+      |                         ^
+  841 |       const json = await res.json();
+  842 |       if (json.success) {
+  843 |         setDbSubjects(json.data); (app/components/HomeScreen.tsx:848:15)
+[browser] Lỗi tải lịch sử chat: TypeError: Failed to fetch
+    at MessengerChat.useCallback[fetchMessages] (file://D:/GiaSu-KNTech/packages/web/.next/dev/static/chunks/packages_web_app_components_1jgvrm6._.js:2502:39)
+    at MessengerChat.useEffect.i (file://D:/GiaSu-KNTech/packages/web/.next/dev/static/chunks/packages_web_app_components_1jgvrm6._.js:2668:50) (file://D:/GiaSu-KNTech/packages/web/.next/dev/static/chunks/packages_web_app_components_1jgvrm6._.js:2539:25)
+[browser] Lỗi tải tin nhắn: TypeError: Failed to fetch
+    at fetchChats (app/components/HomeScreen.tsx:776:9)
+  774 |
+  775 |   const fetchChats = async () => {
+> 776 |     try {
+      |         ^
+  777 |       const res = await fetch(apiUrl("/api/chats"));
+  778 |       const json = await res.json();
+  779 |       if (json.success) { (app/components/HomeScreen.tsx:782:17)
+[browser] Lỗi tải danh bạ nhắn tin: TypeError: Failed to fetch
+    at MessengerChat.useCallback[fetchContacts] (file://D:/GiaSu-KNTech/packages/web/.next/dev/static/chunks/packages_web_app_components_1jgvrm6._.js:2476:35) (file://D:/GiaSu-KNTech/packages/web/.next/dev/static/chunks/packages_web_app_components_1jgvrm6._.js:2489:25)
+[browser] Lỗi tải tài liệu chờ duyệt: TypeError: Failed to fetch
+    at fetchPendingDocs (app/components/HomeScreen.tsx:1416:25)
+    at HomeScreen.useEffect (app/components/HomeScreen.tsx:1436:45)
+  1414 |     setLoadingPendingDocs(true);
+  1415 |     try {
+> 1416 |       const res = await fetch(apiUrl("/api/admin/documents/pending"), {
+       |                         ^
+  1417 |         headers: { Authorization: `Bearer ${token}` },
+  1418 |       });
+  1419 |       const json = await res.json(); (app/components/HomeScreen.tsx:1424:15)
+[browser] Lỗi tải dữ liệu người dùng: TypeError: Failed to fetch
+    at fetchUserData (app/components/HomeScreen.tsx:1222:7)
+    at HomeScreen.useEffect.onFocus (app/components/HomeScreen.tsx:1331:13)
+  1220 |     if (!token) return;
+  1221 |     try {
+> 1222 |       // Fetch latest profile details
+       |       ^
+  1223 |       const meRes = await fetch(apiUrl("/api/users/me"), {
+  1224 |         headers: { Authorization: `Bearer ${token}` },
+  1225 |       }); (app/components/HomeScreen.tsx:1254:17)
+[browser] Lỗi tải lịch sử chat: TypeError: Failed to fetch
+    at MessengerChat.useCallback[fetchMessages] (file://D:/GiaSu-KNTech/packages/web/.next/dev/static/chunks/packages_web_app_components_1jgvrm6._.js:2502:39)
+    at MessengerChat.useEffect.i (file://D:/GiaSu-KNTech/packages/web/.next/dev/static/chunks/packages_web_app_components_1jgvrm6._.js:2668:50) (file://D:/GiaSu-KNTech/packages/web/.next/dev/static/chunks/packages_web_app_components_1jgvrm6._.js:2539:25)
+[browser] Lỗi tải tin nhắn: TypeError: Failed to fetch
+    at fetchChats (app/components/HomeScreen.tsx:776:9)
+  774 |
+  775 |   const fetchChats = async () => {
+> 776 |     try {
+      |         ^
+  777 |       const res = await fetch(apiUrl("/api/chats"));
+  778 |       const json = await res.json();
+  779 |       if (json.success) { (app/components/HomeScreen.tsx:782:17)
+[browser] Lỗi tải danh bạ nhắn tin: TypeError: Failed to fetch
+    at MessengerChat.useCallback[fetchContacts] (file://D:/GiaSu-KNTech/packages/web/.next/dev/static/chunks/packages_web_app_components_1jgvrm6._.js:2476:35) (file://D:/GiaSu-KNTech/packages/web/.next/dev/static/chunks/packages_web_app_components_1jgvrm6._.js:2489:25)

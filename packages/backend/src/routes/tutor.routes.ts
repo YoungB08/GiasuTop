@@ -5,20 +5,14 @@ import { upsertMyTutorProfile, uploadMyTutorDocuments, getMyTutorStatus, submitT
 import { createTutorUpload } from "../utils/upload";
 
 const router = Router();
-router.get('/', getTutors);
-router.get('/:tutorId', getTutorById);
-router.post('/book', bookAppointment);
-router.get("/documents/:documentId", requireAuth, getMyTutorDocumentFile);
-router.get("/me/documents/:documentId/file", requireAuth, getMyTutorDocumentFile);
-router.get("/me/documents/file/:filename", requireAuth, getMyTutorDocumentFileByFilename);
-router.get("/:tutorId/reviews", getTutorReviews);
-router.post("/:tutorId/reviews", createTutorReview);
-router.put("/me/commission", requireAuth, proposeCommission);
 
 // Tutor self-service registration/profile
 router.get("/me/status", requireAuth, getMyTutorStatus);
 router.post("/me/verify-submit", requireAuth, submitTutorVerification);
 router.put("/me/profile", requireAuth, upsertMyTutorProfile);
+router.put("/me/commission", requireAuth, proposeCommission);
+router.get("/me/documents/:documentId/file", requireAuth, getMyTutorDocumentFile);
+router.get("/me/documents/file/:filename", requireAuth, getMyTutorDocumentFileByFilename);
 
 const upload = createTutorUpload();
 router.post(
@@ -32,5 +26,12 @@ router.post(
   ]),
   uploadMyTutorDocuments
 );
+
+router.get('/', getTutors);
+router.post('/book', bookAppointment);
+router.get("/documents/:documentId", requireAuth, getMyTutorDocumentFile);
+router.get("/:tutorId/reviews", getTutorReviews);
+router.post("/:tutorId/reviews", createTutorReview);
+router.get('/:tutorId', getTutorById);
 
 export default router;

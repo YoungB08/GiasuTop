@@ -28,8 +28,17 @@ import DocDetailModal from "./modals/DocDetailModal";
 import TutorProfileModal from "./modals/TutorProfileModal";
 import DocumentPreviewModal from "./modals/DocumentPreviewModal";
 import NewsModal from "./modals/NewsModal";
+import { apiUrl } from "../utils/api";
 
 type TabKey = "home" | "courses" | "my_courses" | "documents" | "news" | "bookings" | "wallet" | "profile" | "notifications" | "admin";
+
+const ALL_FILTER = "Tất cả";
+const DOC_GRADE_FILTERS = [ALL_FILTER, "Lớp 10", "Lớp 11", "Lớp 12"];
+const DOC_TYPE_FILTERS = [ALL_FILTER, "Tài liệu", "Tài liệu ôn thi", "Ôn tập", "Sách", "Giữa kì 1", "Cuối kì 2"];
+
+function normalizeDocFilterParam(value: string) {
+  return value === ALL_FILTER ? "all" : value;
+}
 
 type Tutor = {
   user_id: string;
@@ -49,6 +58,7 @@ type Tutor = {
 
 type Appointment = {
   id: string;
+  class_id?: string;
   student_id: string;
   tutor_id: string;
   start_time: string;
@@ -58,6 +68,16 @@ type Appointment = {
   payment_status: "UNPAID" | "HOLDING" | "RELEASED" | "REFUNDED" | "FAILED";
   live_room_code: string | null;
   live_room_url: string | null;
+  has_live_participants?: boolean;
+  live_participant_count?: number;
+  completion?: {
+    studentConfirmed: boolean;
+    tutorConfirmed: boolean;
+    studentCompletedAt?: string | null;
+    tutorCompletedAt?: string | null;
+    completedAt?: string | null;
+    canFinalize?: boolean;
+  };
   tutor_name?: string;
   student_name?: string;
 };
@@ -131,6 +151,7 @@ type DocumentItem = {
   id: number;
   title: string;
   file_url: string;
+  mime_type?: string | null;
   grade_tag: string;
   type_tag: string;
   subject_tag: string;
@@ -313,7 +334,7 @@ export default function HomeScreen() {
     if (!u) return "";
     const url = u.avatarUrl || u.avatar_url;
     if (!url) return `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(u.email)}`;
-    if (url.startsWith("/")) return `http://localhost:5000${url}`;
+    if (url.startsWith("/")) return apiUrl(`${url}`);
     return url;
   };
 
@@ -360,6 +381,7 @@ export default function HomeScreen() {
   const [cccdBackFile, setCccdBackFile] = useState<File | null>(null);
   const [portraitFile, setPortraitFile] = useState<File | null>(null);
   const [certificatesFiles, setCertificatesFiles] = useState<FileList | null>(null);
+  const [ekycResult, setEkycResult] = useState<any | null>(null);
   const [docFileToUpload, setDocFileToUpload] = useState<File | null>(null);
 
   const showKntechAlert = (type: "success" | "warning" | "error" | "info", title: string, message: string, imgUrl?: string) => {
@@ -396,6 +418,9 @@ export default function HomeScreen() {
 
   const [tutorStatus, setTutorStatus] = useState<string | null>(null);
   const [tutorRejectReason, setTutorRejectReason] = useState<string | null>(null);
+  const [tutorIdentitySubmitted, setTutorIdentitySubmitted] = useState(false);
+  const [tutorTeachingProfileCompleted, setTutorTeachingProfileCompleted] = useState(false);
+  const [tutorRegistrationStep, setTutorRegistrationStep] = useState<string | null>(null);
   const [verificationForm, setVerificationForm] = useState({
     cccdFront: "",
     cccdBack: "",
@@ -464,13 +489,19 @@ export default function HomeScreen() {
   const fetchTutorStatus = async () => {
     if (!token || !user || user.role !== "TUTOR") return;
     try {
-      const res = await fetch("http://localhost:5000/api/tutors/me/status", {
+      const res = await fetch(apiUrl("/api/tutors/me/status"), {
         headers: { Authorization: `Bearer ${token}` },
       });
       const json = await res.json();
       if (json.success) {
         setTutorStatus(json.data.is_verified);
         setTutorRejectReason(json.data.reject_reason);
+        setTutorIdentitySubmitted(Boolean(json.data.identity_submitted));
+        setTutorTeachingProfileCompleted(Boolean(json.data.teaching_profile_completed));
+        setTutorRegistrationStep(json.data.registration_step || null);
+        if (json.data.registration_step === "TEACHING_PROFILE") {
+          setTutorProfileModalOpen(true);
+        }
 
         // Pre-populate fields
         setTutorProfileForm({
@@ -502,8 +533,22 @@ export default function HomeScreen() {
   const [activeTab, setActiveTab] = useState<TabKey>("home");
   const [previousTab, setPreviousTab] = useState<TabKey>("home");
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const [previewDoc, setPreviewDoc] = useState<{ title: string; file_url: string } | null>(null);
+  const [previewDoc, setPreviewDoc] = useState<{ title: string; file_url: string; mime_type?: string } | null>(null);
   const [tutorProfileToView, setTutorProfileToView] = useState<Tutor | null>(null);
+
+  const withAuthToken = (url: string | null | undefined) => {
+    if (!url) return "";
+    const absoluteUrl = apiUrl(url);
+    if (!token) return absoluteUrl;
+    try {
+      const parsed = new URL(absoluteUrl, typeof window !== "undefined" ? window.location.origin : undefined);
+      if (!parsed.searchParams.has("token")) parsed.searchParams.set("token", token);
+      return parsed.toString();
+    } catch {
+      const separator = absoluteUrl.includes("?") ? "&" : "?";
+      return `${absoluteUrl}${separator}token=${encodeURIComponent(token)}`;
+    }
+  };
 
   // Core Data States
   const [tutors, setTutors] = useState<Tutor[]>([]);
@@ -523,22 +568,22 @@ export default function HomeScreen() {
   const [sepayBanks, setSepayBanks] = useState<SepayBank[]>([]);
 
   // Subjects, News, and Documents Lists
-  const [subjectList, setSubjectList] = useState<string[]>(["Tất cả"]);
+  const [subjectList, setSubjectList] = useState<string[]>([ALL_FILTER]);
   const [dbSubjects, setDbSubjects] = useState<Subject[]>([]);
   const [news, setNews] = useState<NewsItem[]>([]);
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
 
   // Filter States
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedSubject, setSelectedSubject] = useState("Tất cả");
-  const [selectedGradeFilter, setSelectedGradeFilter] = useState("Tất cả");
+  const [selectedSubject, setSelectedSubject] = useState(ALL_FILTER);
+  const [selectedGradeFilter, setSelectedGradeFilter] = useState(ALL_FILTER);
   const [loadingTutors, setLoadingTutors] = useState(false);
 
   // Document Filtering States (Screenshot 4 style)
   const [docSearch, setDocSearch] = useState("");
-  const [selectedDocGrade, setSelectedDocGrade] = useState("Tất cả");
-  const [selectedDocSubject, setSelectedDocSubject] = useState("Tất cả");
-  const [selectedDocType, setSelectedDocType] = useState("Tất cả");
+  const [selectedDocGrade, setSelectedDocGrade] = useState(ALL_FILTER);
+  const [selectedDocSubject, setSelectedDocSubject] = useState(ALL_FILTER);
+  const [selectedDocType, setSelectedDocType] = useState(ALL_FILTER);
   const [docSort, setDocSort] = useState<"newest" | "oldest" | "downloads" | "title">("newest");
   const [docPage, setDocPage] = useState(1);
   const [docPageSize, setDocPageSize] = useState(12);
@@ -721,7 +766,7 @@ export default function HomeScreen() {
   // Fetch Dynamic Data from backend
   const fetchNews = async () => {
     try {
-      const res = await fetch("http://localhost:5000/api/news");
+      const res = await fetch(apiUrl("/api/news"));
       const json = await res.json();
       if (json.success) {
         setNews(json.data);
@@ -735,15 +780,15 @@ export default function HomeScreen() {
     setLoadingDocuments(true);
     try {
       const params = new URLSearchParams({
-        grade: selectedDocGrade,
-        subject: selectedDocSubject,
-        type: selectedDocType,
+        grade: normalizeDocFilterParam(selectedDocGrade),
+        subject: normalizeDocFilterParam(selectedDocSubject),
+        type: normalizeDocFilterParam(selectedDocType),
         search: docSearch.trim(),
         sort: docSort,
         page: String(docPage),
         pageSize: String(docPageSize),
       });
-      const res = await fetch(`http://localhost:5000/api/documents?${params.toString()}`);
+      const res = await fetch(apiUrl(`/api/documents?${params.toString()}`));
       const json = await res.json();
       if (json.success) {
         setDocuments(json.data);
@@ -761,7 +806,7 @@ export default function HomeScreen() {
 
   const fetchChats = async () => {
     try {
-      const res = await fetch("http://localhost:5000/api/chats");
+      const res = await fetch(apiUrl("/api/chats"));
       const json = await res.json();
       if (json.success) {
         setChats(json.data);
@@ -773,7 +818,7 @@ export default function HomeScreen() {
 
   const fetchSepayBanks = async () => {
     try {
-      const res = await fetch("http://localhost:5000/api/payments/sepay/banks");
+      const res = await fetch(apiUrl("/api/payments/sepay/banks"));
       const json = await res.json();
       const list = json.data?.data || json.data?.banks || json.data || [];
       if (Array.isArray(list)) {
@@ -794,7 +839,7 @@ export default function HomeScreen() {
     e.preventDefault();
     if (!globalChatInput.trim() || !token) return;
     try {
-      const res = await fetch("http://localhost:5000/api/chats", {
+      const res = await fetch(apiUrl("/api/chats"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -824,12 +869,12 @@ export default function HomeScreen() {
 
   const fetchSubjects = async () => {
     try {
-      const res = await fetch("http://localhost:5000/api/subjects");
+      const res = await fetch(apiUrl("/api/subjects"));
       const json = await res.json();
       if (json.success) {
         setDbSubjects(json.data);
         const names = json.data.map((s: Subject) => s.name);
-        setSubjectList(["Tất cả", ...names]);
+        setSubjectList([ALL_FILTER, ...names]);
       }
     } catch (e) {
       console.error("Lỗi tải môn học:", e);
@@ -870,7 +915,7 @@ export default function HomeScreen() {
   const fetchNotifications = async () => {
     if (!token) return;
     try {
-      const res = await fetch("http://localhost:5000/api/notifications?limit=80", {
+      const res = await fetch(apiUrl("/api/notifications?limit=80"), {
         headers: { Authorization: `Bearer ${token}` },
       });
       const json = await res.json();
@@ -911,7 +956,7 @@ export default function HomeScreen() {
   const markNotificationRead = async (notificationId: number) => {
     if (!token) return;
     try {
-      const res = await fetch(`http://localhost:5000/api/notifications/${notificationId}/read`, {
+      const res = await fetch(apiUrl(`/api/notifications/${notificationId}/read`), {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -928,7 +973,7 @@ export default function HomeScreen() {
   const markAllNotificationsReadClient = async () => {
     if (!token) return;
     try {
-      const res = await fetch("http://localhost:5000/api/notifications/read-all", {
+      const res = await fetch(apiUrl("/api/notifications/read-all"), {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -983,7 +1028,7 @@ export default function HomeScreen() {
     }
 
     fetchNotifications();
-    const stream = new EventSource(`http://localhost:5000/api/notifications/stream?token=${encodeURIComponent(token)}`);
+    const stream = new EventSource(apiUrl(`/api/notifications/stream?token=${encodeURIComponent(token)}`));
     stream.addEventListener("notification", (event) => {
       try {
         const notification = JSON.parse((event as MessageEvent).data) as NotificationItem;
@@ -1011,7 +1056,7 @@ export default function HomeScreen() {
   const fetchTutors = async () => {
     setLoadingTutors(true);
     try {
-      const res = await fetch("http://localhost:5000/api/tutors");
+      const res = await fetch(apiUrl("/api/tutors"));
       const json = await res.json();
       if (json.success) {
         setTutors(json.data);
@@ -1054,7 +1099,7 @@ export default function HomeScreen() {
 
   const logClientActivity = async (action: string, details: string) => {
     try {
-      await fetch("http://localhost:5000/api/logs", {
+      await fetch(apiUrl("/api/logs"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1071,7 +1116,7 @@ export default function HomeScreen() {
     if (!token) return;
     setLoadingCommissions(true);
     try {
-      const res = await fetch("http://localhost:5000/api/admin/commissions/pending", {
+      const res = await fetch(apiUrl("/api/admin/commissions/pending"), {
         headers: { Authorization: `Bearer ${token}` },
       });
       const json = await res.json();
@@ -1090,7 +1135,7 @@ export default function HomeScreen() {
     const rejectReason = status === "REJECTED" ? askRejectReason("đề xuất chiết khấu") : null;
     if (status === "REJECTED" && !rejectReason) return;
     try {
-      const res = await fetch("http://localhost:5000/api/admin/commissions/decide", {
+      const res = await fetch(apiUrl("/api/admin/commissions/decide"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1131,7 +1176,7 @@ export default function HomeScreen() {
     }
     setSendingAdminNotification(true);
     try {
-      const res = await fetch("http://localhost:5000/api/admin/notifications/send", {
+      const res = await fetch(apiUrl("/api/admin/notifications/send"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1207,7 +1252,7 @@ export default function HomeScreen() {
     if (!token) return;
     try {
       // Fetch latest profile details
-      const meRes = await fetch("http://localhost:5000/api/users/me", {
+      const meRes = await fetch(apiUrl("/api/users/me"), {
         headers: { Authorization: `Bearer ${token}` },
       });
       const meJson = await meRes.json();
@@ -1217,7 +1262,7 @@ export default function HomeScreen() {
       }
 
       // Fetch appointments
-      const apptRes = await fetch("http://localhost:5000/api/users/me/appointments", {
+      const apptRes = await fetch(apiUrl("/api/users/me/appointments"), {
         headers: { Authorization: `Bearer ${token}` },
       });
       const apptJson = await apptRes.json();
@@ -1226,7 +1271,7 @@ export default function HomeScreen() {
       }
 
       // Fetch wallet status, ledger and withdraws
-      const walletRes = await fetch("http://localhost:5000/api/wallet/status", {
+      const walletRes = await fetch(apiUrl("/api/wallet/status"), {
         headers: { Authorization: `Bearer ${token}` },
       });
       const walletJson = await walletRes.json();
@@ -1250,7 +1295,7 @@ export default function HomeScreen() {
       return;
     }
     try {
-      const res = await fetch("http://localhost:5000/api/wallet/topup", {
+      const res = await fetch(apiUrl("/api/wallet/topup"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1282,7 +1327,7 @@ export default function HomeScreen() {
       return;
     }
     try {
-      const res = await fetch("http://localhost:5000/api/wallet/withdraw", {
+      const res = await fetch(apiUrl("/api/wallet/withdraw"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1332,7 +1377,7 @@ export default function HomeScreen() {
   const fetchPendingTutors = async () => {
     setLoadingPending(true);
     try {
-      const res = await fetch("http://localhost:5000/api/admin/tutors/pending", {
+      const res = await fetch(apiUrl("/api/admin/tutors/pending"), {
         headers: { Authorization: `Bearer ${token}` },
       });
       const json = await res.json();
@@ -1349,7 +1394,7 @@ export default function HomeScreen() {
   const fetchSystemStats = async () => {
     setLoadingStats(true);
     try {
-      const res = await fetch("http://localhost:5000/api/admin/stats", {
+      const res = await fetch(apiUrl("/api/admin/stats"), {
         headers: { Authorization: `Bearer ${token}` },
       });
       const json = await res.json();
@@ -1366,7 +1411,7 @@ export default function HomeScreen() {
   const fetchSystemLogs = async () => {
     setLoadingLogs(true);
     try {
-      const res = await fetch("http://localhost:5000/api/admin/logs", {
+      const res = await fetch(apiUrl("/api/admin/logs"), {
         headers: { Authorization: `Bearer ${token}` },
       });
       const json = await res.json();
@@ -1383,7 +1428,7 @@ export default function HomeScreen() {
   const fetchSystemUsers = async () => {
     setLoadingUsers(true);
     try {
-      const res = await fetch("http://localhost:5000/api/admin/users", {
+      const res = await fetch(apiUrl("/api/admin/users"), {
         headers: { Authorization: `Bearer ${token}` },
       });
       const json = await res.json();
@@ -1400,7 +1445,7 @@ export default function HomeScreen() {
   const fetchPendingDocs = async () => {
     setLoadingPendingDocs(true);
     try {
-      const res = await fetch("http://localhost:5000/api/admin/documents/pending", {
+      const res = await fetch(apiUrl("/api/admin/documents/pending"), {
         headers: { Authorization: `Bearer ${token}` },
       });
       const json = await res.json();
@@ -1443,6 +1488,10 @@ export default function HomeScreen() {
     showKntechAlert("info", "Đăng xuất thành công", "Bác đã đăng xuất. Hẹn gặp lại bác nhé!");
     setToken(null);
     setUser(null);
+    setTutorStatus(null);
+    setTutorIdentitySubmitted(false);
+    setTutorTeachingProfileCompleted(false);
+    setTutorRegistrationStep(null);
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     setActiveTab("home");
@@ -1477,7 +1526,7 @@ export default function HomeScreen() {
         const endDateTime = new Date(startDateTime.getTime() + durationHours * 60 * 60 * 1000);
         const price = Number(selectedTutor?.hourly_rate || 150000) * durationHours;
 
-        const res = await fetch("http://localhost:5000/api/tutors/book", {
+        const res = await fetch(apiUrl("/api/tutors/book"), {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -1559,7 +1608,7 @@ export default function HomeScreen() {
 
         const totalPrice = Number(selectedTutor?.hourly_rate || 150000) * durationHours * sessions.length;
 
-        const res = await fetch("http://localhost:5000/api/tutors/book", {
+        const res = await fetch(apiUrl("/api/tutors/book"), {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -1620,7 +1669,7 @@ export default function HomeScreen() {
     setPaymentDetails(null);
 
     try {
-      const res = await fetch("http://localhost:5000/api/payments/qr", {
+      const res = await fetch(apiUrl("/api/payments/qr"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1644,7 +1693,7 @@ export default function HomeScreen() {
   const handleSimulatePayment = async () => {
     if (!paymentDetails) return;
     try {
-      const res = await fetch("http://localhost:5000/api/payments/sepay/mock-trigger", {
+      const res = await fetch(apiUrl("/api/payments/sepay/mock-trigger"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1698,7 +1747,7 @@ export default function HomeScreen() {
       cancelText: "Hủy",
       onConfirm: async () => {
         try {
-          const res = await fetch("http://localhost:5000/api/payments/wallet-pay", {
+          const res = await fetch(apiUrl("/api/payments/wallet-pay"), {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -1743,6 +1792,69 @@ export default function HomeScreen() {
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       }
     ]);
+  };
+  const getClassId = (appt: Appointment) => appt.class_id || appt.live_room_code || appt.id;
+  const hasUserConfirmedClass = (appt: Appointment) => {
+    if (user?.role === "STUDENT") return Boolean(appt.completion?.studentConfirmed);
+    if (user?.role === "TUTOR") return Boolean(appt.completion?.tutorConfirmed);
+    return Boolean(appt.completion?.studentConfirmed && appt.completion?.tutorConfirmed);
+  };
+  const renderClassBadges = (appt: Appointment) => (
+    <>
+      <span className="bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200 text-[10px] font-bold px-2 py-0.5 rounded-full border border-slate-200 dark:border-slate-700">
+        ID lớp: {getClassId(appt)}
+      </span>
+      {appt.has_live_participants && (
+        <span className="bg-emerald-500/10 text-emerald-600 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-500/10">
+          Đang có người ({appt.live_participant_count || 1})
+        </span>
+      )}
+      {appt.status === "DONE" && (
+        <span className="bg-indigo-500/10 text-indigo-600 text-[10px] font-bold px-2 py-0.5 rounded-full border border-indigo-500/10">
+          Hoàn thành buổi
+        </span>
+      )}
+    </>
+  );
+  const renderCompletionStatus = (appt: Appointment) => (
+    <div className="mt-2 flex flex-wrap gap-1.5 text-[10px]">
+      <span className={`px-2 py-0.5 rounded-full border ${appt.completion?.studentConfirmed ? "bg-emerald-50 text-emerald-700 border-emerald-100" : "bg-slate-50 text-slate-500 border-slate-200"}`}>
+        Học viên {appt.completion?.studentConfirmed ? "đã xác nhận" : "chưa xác nhận"}
+      </span>
+      <span className={`px-2 py-0.5 rounded-full border ${appt.completion?.tutorConfirmed ? "bg-emerald-50 text-emerald-700 border-emerald-100" : "bg-slate-50 text-slate-500 border-slate-200"}`}>
+        Gia sư {appt.completion?.tutorConfirmed ? "đã xác nhận" : "chưa xác nhận"}
+      </span>
+    </div>
+  );
+
+  const handleConfirmClassCompleted = async (appt: Appointment) => {
+    if (!token) {
+      openAuth("login");
+      return;
+    }
+
+    try {
+      const res = await fetch(apiUrl(`/api/users/me/appointments/${appt.id}/complete`), {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const json = await res.json();
+      if (json.success) {
+        showKntechAlert(
+          "success",
+          json.data?.status === "DONE" ? "Hoàn thành buổi" : "Đã ghi nhận xác nhận",
+          json.message || "Đã cập nhật trạng thái buổi học."
+        );
+        logClientActivity("CONFIRM_CLASS_COMPLETED", `Xác nhận hoàn thành buổi học ${appt.id}`);
+        fetchUserData();
+      } else {
+        showKntechAlert("error", "Không thể xác nhận", json.message || "Vui lòng thử lại.");
+      }
+    } catch {
+      showKntechAlert("error", "Lỗi kết nối", "Không thể xác nhận hoàn thành buổi học.");
+    }
   };
 
   const handleSendMessage = (e: React.FormEvent) => {
@@ -1832,7 +1944,7 @@ export default function HomeScreen() {
   const docRangeStart = docTotal === 0 ? 0 : (docPage - 1) * docPageSize + 1;
   const docRangeEnd = Math.min(docTotal, docPage * docPageSize);
 
-  // Format currency
+  // Format currency validated
   const formatVND = (value: number | string) => {
     const num = Number(value);
     return num.toLocaleString("vi-VN") + " đ";
@@ -1849,6 +1961,8 @@ export default function HomeScreen() {
     }
   };
 
+  // dummy function removed
+    // const num = Number(value);
   // Subject Actions
   const handleAddOrEditSubject = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1856,7 +1970,7 @@ export default function HomeScreen() {
 
     try {
       if (editingSubject) {
-        const res = await fetch(`http://localhost:5000/api/admin/subjects/${editingSubject.id}`, {
+        const res = await fetch(apiUrl(`/api/admin/subjects/${editingSubject.id}`), {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
@@ -1876,7 +1990,7 @@ export default function HomeScreen() {
           showKntechAlert("error", "Lỗi", formatBackendError(json));
         }
       } else {
-        const res = await fetch("http://localhost:5000/api/admin/subjects", {
+        const res = await fetch(apiUrl("/api/admin/subjects"), {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -1904,7 +2018,7 @@ export default function HomeScreen() {
   const handleDeleteSubject = async (id: number) => {
     if (!confirm("Bác có chắc chắn muốn xóa môn học này không?")) return;
     try {
-      const res = await fetch(`http://localhost:5000/api/admin/subjects/${id}`, {
+      const res = await fetch(apiUrl(`/api/admin/subjects/${id}`), {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -1926,27 +2040,20 @@ export default function HomeScreen() {
   // Tutor Decisions
   const handleDecideTutor = async (tutorUserId: string, decision: "APPROVED" | "REJECTED", reason?: string) => {
     try {
-      const res = await fetch("http://localhost:5000/api/admin/tutors/decide", {
+      const res = await fetch(apiUrl("/api/admin/tutors/decide"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          tutorUserId,
-          decision,
-          rejectReason: reason,
-        }),
+        body: JSON.stringify({ tutorUserId, decision, rejectReason: reason }),
       });
       const json = await res.json();
       if (json.success) {
-        logClientActivity("DECIDE_TUTOR", `Xét duyệt gia sư ${tutorUserId} thành ${decision}. Lý do: ${reason || "Không"}`);
-        showKntechAlert("success", "Xét duyệt thành công", decision === "APPROVED" ? "Gia sư đã được phê duyệt hoạt động." : `Đã từ chối hồ sơ gia sư. Lý do: ${reason || ""}`);
-        setToastMessage(decision === "APPROVED" ? "✅ Phê duyệt gia sư thành công!" : "❌ Đã từ chối hồ sơ gia sư.");
-        setRejectingTutorId(null);
-        setAdminRejectReason("");
+        logClientActivity("DECIDE_TUTOR", `Xét duyệt gia sư ${tutorUserId} thành ${decision}`);
+        showKntechAlert("success", "Xét duyệt thành công", decision === "APPROVED" ? "Gia sư đã được duyệt." : "Đã từ chối gia sư.");
+        setToastMessage(decision === "APPROVED" ? "✅ Phê duyệt gia sư thành công!" : "❌ Từ chối gia sư thành công!");
         fetchPendingTutors();
-        fetchTutors();
       } else {
         showKntechAlert("error", "Lỗi", formatBackendError(json));
       }
@@ -1955,6 +2062,19 @@ export default function HomeScreen() {
       showKntechAlert("error", "Lỗi kết nối", "Lỗi xét duyệt gia sư");
     }
   };
+    /*
+      const res = await fetch(apiUrl("/api/admin/tutors/decide"), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+      } else {
+        showKntechAlert("error", "Lỗi", formatBackendError(json));
+      }
+    } catch (e) {
+      console.error("Lỗi xét duyệt gia sư:", e);
+      showKntechAlert("error", "Lỗi kết nối", "Lỗi xét duyệt gia sư");
+    }
+    */
 
   // User Manager Actions
   const handleEditUserClick = (u: SystemUser) => {
@@ -1975,7 +2095,7 @@ export default function HomeScreen() {
     if (!editingUser) return;
 
     try {
-      const res = await fetch(`http://localhost:5000/api/admin/users/${editingUser.id}`, {
+      const res = await fetch(apiUrl(`/api/admin/users/${editingUser.id}`), {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -2012,6 +2132,8 @@ export default function HomeScreen() {
     }
   };
 
+
+
   // Documents Actions
   const handleUploadDoc = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -2032,7 +2154,7 @@ export default function HomeScreen() {
       formData.append("typeTag", docUploadForm.typeTag);
       formData.append("subjectTag", docUploadForm.subjectTag);
 
-      const res = await fetch("http://localhost:5000/api/documents/upload", {
+      const res = await fetch(apiUrl("/api/documents/upload"), {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`
@@ -2067,7 +2189,7 @@ export default function HomeScreen() {
     const rejectReason = decision === "REJECTED" ? askRejectReason("tài liệu") : null;
     if (decision === "REJECTED" && !rejectReason) return;
     try {
-      const res = await fetch(`http://localhost:5000/api/admin/documents/${id}/decide`, {
+      const res = await fetch(apiUrl(`/api/admin/documents/${id}/decide`), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -2094,7 +2216,7 @@ export default function HomeScreen() {
   const handleDeleteDocument = async (id: number) => {
     if (!confirm("Bác có muốn xóa tài liệu này?")) return;
     try {
-      const res = await fetch(`http://localhost:5000/api/documents/${id}`, {
+      const res = await fetch(apiUrl(`/api/documents/${id}`), {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -2119,7 +2241,7 @@ export default function HomeScreen() {
     e.preventDefault();
     try {
       if (editingNews) {
-        const res = await fetch(`http://localhost:5000/api/admin/news/${editingNews.id}`, {
+        const res = await fetch(apiUrl(`/api/admin/news/${editingNews.id}`), {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
@@ -2139,7 +2261,7 @@ export default function HomeScreen() {
           showKntechAlert("error", "Lỗi", formatBackendError(json));
         }
       } else {
-        const res = await fetch("http://localhost:5000/api/admin/news", {
+        const res = await fetch(apiUrl("/api/admin/news"), {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -2174,7 +2296,7 @@ export default function HomeScreen() {
   const handleDeleteNews = async (id: number) => {
     if (!confirm("Bác muốn xóa bài tin này?")) return;
     try {
-      const res = await fetch(`http://localhost:5000/api/admin/news/${id}`, {
+      const res = await fetch(apiUrl(`/api/admin/news/${id}`), {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -2238,7 +2360,7 @@ export default function HomeScreen() {
         const formData = new FormData();
         formData.append("avatar", completeAvatarFile);
 
-        const uploadRes = await fetch("http://localhost:5000/api/users/me/avatar", {
+        const uploadRes = await fetch(apiUrl("/api/users/me/avatar"), {
           method: "POST",
           headers: {
             Authorization: `Bearer ${token}`,
@@ -2260,7 +2382,7 @@ export default function HomeScreen() {
       }
 
       // 2. Update profile fields
-      const res = await fetch("http://localhost:5000/api/users/me", {
+      const res = await fetch(apiUrl("/api/users/me"), {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -2278,10 +2400,18 @@ export default function HomeScreen() {
       });
       const json = await res.json();
       if (json.success) {
+        const autoApproved = Boolean(json.data?.autoApproved);
         showKntechAlert("success", "Hoàn thành hồ sơ", "Hồ sơ của bác đã được cập nhật thành công!");
         setUser(json.data);
         localStorage.setItem("user", JSON.stringify(json.data));
-        fetchTutors(); // Refresh tutors list
+        fetchTutors();
+        setTutorTeachingProfileCompleted(Boolean(json.data?.teaching_profile_completed ?? true));
+        setTutorRegistrationStep(json.data?.registration_step || (autoApproved ? "COMPLETED" : "PENDING_REVIEW"));
+        showKntechAlert(
+          autoApproved ? "success" : "info",
+          autoApproved ? "eKYC tự động phê duyệt" : "Đã gửi hồ sơ dạy học",
+          json.message || (autoApproved ? "Hồ sơ đã được tự động phê duyệt." : "Hồ sơ đã chuyển admin duyệt tay.")
+        );
       } else {
         showKntechAlert("error", "Lỗi", formatBackendError(json));
       }
@@ -2314,7 +2444,7 @@ export default function HomeScreen() {
   const handleUpdateTutorProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch("http://localhost:5000/api/tutors/me/profile", {
+      const res = await fetch(apiUrl("/api/tutors/me/profile"), {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -2333,17 +2463,26 @@ export default function HomeScreen() {
       });
       const json = await res.json();
       if (json.success) {
-        logClientActivity("UPDATE_TUTOR_PROFILE", `Cập nhật hồ sơ gia sư: Trường ${tutorProfileForm.school}, Giá học phí ${tutorProfileForm.hourlyRate}đ/h`);
-        showKntechAlert("success", "Cập nhật hồ sơ thành công", "Thông tin hồ sơ gia sư của bác đã được cập nhật thành công.");
+        const autoApproved = Boolean(json.data?.autoApproved);
+        setTutorStatus(json.data?.is_verified || tutorStatus);
+        setTutorIdentitySubmitted(Boolean(json.data?.identity_submitted ?? true));
+        setTutorTeachingProfileCompleted(Boolean(json.data?.teaching_profile_completed ?? true));
+        setTutorRegistrationStep(json.data?.registration_step || (autoApproved ? "COMPLETED" : "PENDING_REVIEW"));
+        showKntechAlert(
+          autoApproved ? "success" : "info",
+          autoApproved ? "eKYC tự động phê duyệt" : "Đã gửi hồ sơ dạy học",
+          json.message || (autoApproved ? "Hồ sơ đã được tự động phê duyệt." : "Hồ sơ đã chuyển admin duyệt tay.")
+        );
         setToastMessage("🎉 Đã cập nhật hồ sơ dạy học thành công!");
         setTutorProfileModalOpen(false);
+        fetchTutorStatus();
         fetchTutors();
       } else {
         showKntechAlert("error", "Lỗi", formatBackendError(json));
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      showKntechAlert("error", "Lỗi kết nối", "Lỗi lưu hồ sơ gia sư.");
+      showKntechAlert("error", "Lỗi kết nối", "Không thể cập nhật hồ sơ gia sư.");
     }
   };
 
@@ -2354,7 +2493,6 @@ export default function HomeScreen() {
       const formData = new FormData();
 
       if (tutorStatus === "APPROVED") {
-        // Phase 2: Upload certificates only
         if (!certificatesFiles || certificatesFiles.length === 0) {
           showKntechAlert("warning", "Thiếu thông tin", "Vui lòng chọn ít nhất một tệp bằng cấp/chứng chỉ.");
           setSubmittingVerification(false);
@@ -2364,26 +2502,23 @@ export default function HomeScreen() {
           formData.append("certificates", certificatesFiles[i]);
         }
       } else {
-        // Phase 1: Upload identity documents
         if (!cccdFrontFile || !cccdBackFile || !portraitFile) {
           showKntechAlert("warning", "Thiếu thông tin", "Vui lòng chọn đầy đủ ảnh chân dung và 2 mặt CCCD.");
+          setSubmittingVerification(false);
+          return;
+        }
+        if (!ekycResult) {
+          showKntechAlert("warning", "eKYC chưa hoàn tất", "Vui lòng chờ eKYC tự động hoàn tất trước khi gửi bước 1.");
           setSubmittingVerification(false);
           return;
         }
         formData.append("cccdFront", cccdFrontFile);
         formData.append("cccdBack", cccdBackFile);
         formData.append("portrait", portraitFile);
-        formData.append("bio", tutorProfileForm.bio);
-        formData.append("school", tutorProfileForm.school);
-        formData.append("major", tutorProfileForm.major);
-        formData.append("yearOfStudy", tutorProfileForm.yearOfStudy);
-        formData.append("hourlyRate", String(tutorProfileForm.hourlyRate));
-        formData.append("subjectsToTeach", JSON.stringify(tutorProfileForm.subjectsToTeach));
-        formData.append("cardGradient", tutorProfileForm.cardGradient);
-        formData.append("proposedPercent", newCommissionRate || "10");
+        formData.append("ekycResult", JSON.stringify(ekycResult));
       }
 
-      const res = await fetch("http://localhost:5000/api/tutors/me/documents", {
+      const res = await fetch(apiUrl("/api/tutors/me/documents"), {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -2392,110 +2527,63 @@ export default function HomeScreen() {
       });
       const json = await res.json();
       if (json.success) {
-        showKntechAlert("success", "Thành công!", tutorStatus === "APPROVED" ? "Đã gửi thêm bằng cấp/chứng chỉ thành công!" : "🎉 Gửi hồ sơ xác minh thành công! Đang chờ Ban quản trị duyệt.");
+        const nextStep = json.data?.registration_step || "TEACHING_PROFILE";
+        showKntechAlert(
+          "success",
+          tutorStatus === "APPROVED" ? "Thành công!" : "Hoàn tất bước 1",
+          tutorStatus === "APPROVED"
+            ? "Đã gửi thêm bằng cấp/chứng chỉ thành công!"
+            : json.message || "Đã lưu giấy tờ và eKYC. Tiếp tục bước 2 để hoàn tất hồ sơ dạy học."
+        );
+        setTutorStatus(json.data?.is_verified || tutorStatus || "PENDING");
+        setTutorIdentitySubmitted(Boolean(json.data?.identity_submitted ?? true));
+        setTutorTeachingProfileCompleted(Boolean(json.data?.teaching_profile_completed ?? false));
+        setTutorRegistrationStep(nextStep);
         setCccdFrontFile(null);
         setCccdBackFile(null);
         setPortraitFile(null);
         setCertificatesFiles(null);
-        fetchTutorStatus();
+        setEkycResult(null);
+        if (nextStep === "TEACHING_PROFILE") {
+          setTutorProfileModalOpen(true);
+        }
       } else {
-        showKntechAlert("error", "Lỗi gửi hồ sơ", formatBackendError(json));
+        showKntechAlert("error", "Lỗi", formatBackendError(json));
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      showKntechAlert("error", "Lỗi kết nối", "Đã xảy ra lỗi kết nối đến máy chủ.");
+      showKntechAlert("error", "Lỗi kết nối", "Không thể gửi tài liệu xác minh.");
     } finally {
       setSubmittingVerification(false);
     }
   };
 
-  const checkUserStatus = async () => {
-    if (!token) return;
-    try {
-      const res = await fetch("http://localhost:5000/api/users/me", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const json = await res.json();
-      if (res.status === 403 && json.code === "USER_BANNED") {
-        setIsBanned(true);
-        showKntechAlert("error", "Tài khoản bị khóa", "Tài khoản của bác đã bị khóa (BANNED) do vi phạm chính sách cộng đồng.");
-        handleLogout();
-      } else if (json.success && json.data.status === "BANNED") {
-        setIsBanned(true);
-        showKntechAlert("error", "Tài khoản bị khóa", "Tài khoản của bác đã bị khóa (BANNED) do vi phạm chính sách cộng đồng.");
-        handleLogout();
-      }
-    } catch (e) {
-      console.error("Lỗi kiểm tra trạng thái tài khoản:", e);
-    }
-  };
-
-  useEffect(() => {
-    if (token) {
-      checkUserStatus();
-    } else {
-      setIsBanned(false);
-    }
-  }, [token]);
-
-  useEffect(() => {
-    if (token && user && user.role === "TUTOR") {
-      fetchTutorStatus();
-    }
-  }, [token, user]);
-
   return (
-    <div className="bg-[#f0f2f5] min-h-screen font-sans text-slate-700 antialiased dark:bg-[#090b11] dark:text-slate-350">
-
-      {/* Toast notifications */}
-      {toastMessage && (
-        <div className="fixed top-6 right-6 z-50 max-w-sm rounded-xl bg-slate-900/90 text-white px-4 py-3 shadow-2xl backdrop-blur-md border border-white/10 flex items-center gap-2.5 animate-pulse">
-          <IconBell className="h-4 w-4 text-[#1877f2] shrink-0" />
-          <p className="text-xs font-semibold">{toastMessage}</p>
-        </div>
-      )}
-
-      {/* iOS App Add to Home Screen Guide Prompt */}
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 flex flex-col font-sans transition-colors duration-300">
+      
+      {/* iOS Install Prompt */}
       {showInstallPrompt && (
-        <div className="fixed bottom-4 left-4 right-4 z-50 animate-bounce-short">
-          {/* Giao diện Glassmorphism hiện đại theo phong cáchGiasuTop*/}
-          <div className="bg-white/90 dark:bg-slate-900/95 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 shadow-2xl rounded-2xl p-4 flex flex-col gap-3 max-w-sm mx-auto text-slate-800 dark:text-slate-200">
-
-            {/* Tiêu đề & Nút đóng */}
-            <div className="flex justify-between items-start">
-              <div className="flex items-center gap-3">
-                <img src="https://i.ibb.co/NdgYx2Fy/Gemini-Generated-Image-89azsx89azsx89az.png" alt="Logo" className="w-10 h-10 rounded-xl object-cover shrink-0" />
-                <div>
-                  <h3 className="font-bold text-xs text-slate-900 dark:text-white">Cài đặt Web App GiasuTop</h3>
-                  <p className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">Thêm vào màn hình chính để sử dụng như App thật</p>
-                </div>
+        <div className="fixed bottom-4 left-4 right-4 md:left-auto md:right-4 md:w-96 z-50 bg-white/95 dark:bg-slate-900/95 border border-slate-200/80 dark:border-slate-800/80 rounded-2xl shadow-2xl p-4 flex gap-3 animate-slide-up backdrop-blur-md">
+          <div className="h-10 w-10 rounded-xl bg-[#13519c]/10 dark:bg-[#13519c]/25 flex items-center justify-center shrink-0">
+            <img src="https://i.ibb.co/NdgYx2Fy/Gemini-Generated-Image-89azsx89azsx89az.png" alt="Logo" className="h-8 w-8 rounded-lg object-cover" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-start justify-between">
+              <div>
+                <h4 className="text-xs font-black tracking-tight text-slate-800 dark:text-slate-100">Cài đặt ứng dụng GiasuTop</h4>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">
+                  Bác thêm vào màn hình chính: chạm vào biểu tượng chia sẻ <i className="fa-solid fa-arrow-up-from-bracket text-blue-500"></i> rồi chọn "Thêm vào MH chính" để cài đặt.
+                </p>
               </div>
               <button
-                type="button"
                 onClick={() => setShowInstallPrompt(false)}
-                className="text-slate-400 hover:text-slate-650 p-1 rounded-lg transition-colors cursor-pointer text-xs"
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-0.5"
               >
-                ✕
+                <i className="fa-solid fa-xmark text-xs"></i>
               </button>
             </div>
-
-            <hr className="border-slate-200/60 dark:border-slate-800/60" />
-
-            {/* Các bước hướng dẫn trực quan */}
-            <div className="text-[11px] space-y-2.5 text-slate-600 dark:text-slate-400">
-              <div className="flex items-start gap-2">
-                <span className="flex items-center justify-center w-5 h-5 rounded-full bg-blue-50 dark:bg-slate-800 text-[#13519c] dark:text-blue-400 font-bold shrink-0 text-[10px]">1</span>
-                <span>Bấm vào nút <strong className="text-slate-900 dark:text-white font-semibold">Chia sẻ (Share)</strong> <i className="fa-solid fa-arrow-up-from-bracket ml-0.5 text-blue-500"></i> trên thanh công cụ của Safari.</span>
-              </div>
-              <div className="flex items-start gap-2">
-                <span className="flex items-center justify-center w-5 h-5 rounded-full bg-blue-50 dark:bg-slate-800 text-[#13519c] dark:text-blue-400 font-bold shrink-0 text-[10px]">2</span>
-                <span>Kéo xuống dưới và chọn <strong className="text-slate-900 dark:text-white font-semibold">Thêm vào MH chính (Add to Home Screen)</strong> <i className="fa-regular fa-square-plus ml-0.5 text-blue-500"></i>.</span>
-              </div>
-            </div>
-
-            {/* Download Button in prompt */}
-            <div className="mt-1 pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
-              <span className="text-[9px] text-slate-400">Hoặc tải trực tiếp tập tin cài đặt:</span>
+            
+            <div className="mt-2.5 flex items-center gap-2">
               <a
                 href="/kntech-mobile.ipa"
                 download
@@ -2556,8 +2644,6 @@ export default function HomeScreen() {
             {activeTab === "home" && homeSubTab === "feed" && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-white" />}
           </button>
 
-
-
           {/* Tìm gia sư giỏi */}
           <button
             onClick={() => setActiveTab("courses")}
@@ -2569,23 +2655,6 @@ export default function HomeScreen() {
             {activeTab === "courses" && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-white" />}
           </button>
 
-          {/* Lớp học của con */}
-          <button
-            onClick={() => {
-              if (!token) openAuth("login");
-              else setActiveTab("my_courses");
-            }}
-            className={`h-full px-2.5 flex items-center justify-center relative cursor-pointer focus:outline-none transition ${activeTab === "my_courses" ? "text-white" : "text-white/60 hover:text-white"
-              }`}
-            title="Lớp học của con"
-          >
-            <svg className="h-4.5 w-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-            </svg>
-            {activeTab === "my_courses" && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-white" />}
-          </button>
-
-          {/* Thư viện đề thi */}
           <button
             onClick={() => {
               setSelectedDocType("Tất cả");
@@ -2662,29 +2731,10 @@ export default function HomeScreen() {
             {activeTab === "home" && homeSubTab === "community" && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-white" />}
           </button>
 
-          {/* Đăng ký gia sư */}
-          <button
-            onClick={handleTutorRegisterClick}
-            className={`h-full px-2.5 flex items-center justify-center relative cursor-pointer focus:outline-none transition text-pink-300 hover:text-white`}
-            title={user?.role === "TUTOR" ? "Hồ sơ dạy học" : "Đăng ký làm gia sư"}
-          >
-            <svg className="h-4.5 w-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-              <circle cx="8.5" cy="7" r="4" />
-              <line x1="20" y1="8" x2="20" y2="14" />
-              <line x1="23" y1="11" x2="17" y2="11" />
-            </svg>
-          </button>
-
           {/* Trang cá nhân */}
           <button
-            onClick={() => {
-              if (!token) openAuth("login");
-              else {
-                setTutorProfileToView(null);
-                setActiveTab("profile");
-              }
-            }}
+            onClick={() => { setTutorProfileToView(null); setActiveTab("profile"); }}
+
             className={`h-full px-2.5 flex items-center justify-center relative cursor-pointer focus:outline-none transition ${activeTab === "profile" && !tutorProfileToView ? "text-white" : "text-white/60 hover:text-white"
               }`}
             title="Trang cá nhân"
@@ -2736,23 +2786,31 @@ export default function HomeScreen() {
                     }`}
                 >
                   <svg className="h-3.5 w-3.5 text-[#13519c]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
-                  Duyệt Giáo Viên ({pendingTutors.length})
+                  👩‍🏫 Duyệt Giáo Viên ({pendingTutors.length})
                 </button>
                 <button
-                  onClick={() => { setActiveTab("admin"); setAdminTab("subjects"); }}
-                  className={`w-full text-left px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-semibold flex items-center gap-2 ${activeTab === "admin" && adminTab === "subjects" ? "bg-slate-50 text-[#13519c]" : ""
+                  onClick={() => { setActiveTab("admin"); setAdminTab("notifications"); }}
+                  className={`w-full text-left px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-semibold flex items-center gap-2 ${activeTab === "admin" && adminTab === "notifications" ? "bg-slate-50 text-[#13519c]" : ""
                     }`}
                 >
-                  <svg className="h-3.5 w-3.5 text-[#13519c]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20M4 19.5A2.5 2.5 0 0 0 6.5 22H20M4 19.5v-15A2.5 2.5 0 0 1 6.5 2h13.5v20H6.5a2.5 2.5 0 0 1-2.5-2.5z" /></svg>
-                  Quản lý Môn Học
+                  <svg className="h-3.5 w-3.5 text-[#13519c]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>
+                  🔔 Gửi Thông Báo
                 </button>
                 <button
-                  onClick={() => { setActiveTab("admin"); setAdminTab("pending_docs"); }}
-                  className={`w-full text-left px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-semibold flex items-center gap-2 ${activeTab === "admin" && adminTab === "pending_docs" ? "bg-slate-50 text-[#13519c]" : ""
+                  onClick={() => { setActiveTab("admin"); setAdminTab("escrow"); }}
+                  className={`w-full text-left px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-semibold flex items-center gap-2 ${activeTab === "admin" && adminTab === "escrow" ? "bg-slate-50 text-[#13519c]" : ""
                     }`}
                 >
-                  <svg className="h-3.5 w-3.5 text-[#13519c]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" /></svg>
-                  Duyệt Tài Liệu
+                  <svg className="h-3.5 w-3.5 text-[#13519c]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="2" width="20" height="20" rx="5" ry="5" /><line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg>
+                  💰 Quản lý Giữ Tiền
+                </button>
+                <button
+                  onClick={() => { setActiveTab("admin"); setAdminTab("withdrawals"); }}
+                  className={`w-full text-left px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-semibold flex items-center gap-2 ${activeTab === "admin" && adminTab === "withdrawals" ? "bg-slate-50 text-[#13519c]" : ""
+                    }`}
+                >
+                  <svg className="h-3.5 w-3.5 text-[#13519c]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2" /><line x1="1" y1="10" x2="23" y2="10" /></svg>
+                  💳 Quản lý Rút Tiền
                 </button>
                 <div className="border-t my-1"></div>
                 <button
@@ -2897,19 +2955,13 @@ export default function HomeScreen() {
 
       {/* MAIN CONTENT LAYOUT WITH FIXED LEFT SIDEBAR */}
       <div className="pt-14 min-h-screen flex bg-[#f0f2f5] dark:bg-[#090b11]">
-
         {/* COLUMN 1: FIXED LEFT SIDEBAR */}
         <aside className="hidden md:flex flex-col justify-between fixed left-0 top-14 bottom-0 w-64 bg-white dark:bg-[#111827] border-r border-slate-200/50 dark:border-slate-800 z-30 overflow-y-auto p-3 pb-14 space-y-4">
           <div className="space-y-4">
-
-            {/* 1. If activeTab is 'courses' (Tìm Gia Sư) -> categories moved inline into content */}
-
-            {/* 2. If activeTab is 'documents' (Tài liệu) -> show filter widgets */}
             {activeTab === "documents" && (
               <div className="bg-white dark:bg-[#111827] rounded-xl p-3 shadow-sm border border-slate-200/50 dark:border-slate-800 space-y-3 hidden md:block text-xs">
                 <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Bộ lọc tìm kiếm</span>
 
-                {/* Search */}
                 <div className="relative">
                   <IconSearch className="absolute left-3 top-1/2 -translate-y-1/2 h-3 w-3 text-slate-400" />
                   <input
@@ -2921,18 +2973,17 @@ export default function HomeScreen() {
                   />
                 </div>
 
-                {/* Subject filters */}
                 <div className="space-y-1.5">
-                  <label className="block text-[10px] uppercase font-bold text-slate-400">Môn Học</label>
+                  <label className="block text-[10px] uppercase font-bold text-slate-400">Môn học</label>
                   <div className="flex flex-wrap gap-1">
-                    {["Tất cả", "Toán", "Lý", "Hóa", "Văn", "Tiếng Anh", "Sinh học"].map((sub) => (
+                    {subjectList.map((sub) => (
                       <button
                         key={sub}
+                        type="button"
                         onClick={() => setSelectedDocSubject(sub)}
-                        className={`px-2 py-1 rounded text-[10px] font-semibold border transition ${selectedDocSubject === sub
+                        className={"px-2 py-1 rounded text-[10px] font-semibold border transition " + (selectedDocSubject === sub
                           ? "bg-[#13519c] text-white"
-                          : "bg-slate-50 hover:bg-slate-100 text-slate-655 dark:bg-slate-900/60 dark:text-slate-300 border-slate-100 dark:border-slate-800"
-                          }`}
+                          : "bg-slate-50 hover:bg-slate-100 text-slate-655 dark:bg-slate-900/60 dark:text-slate-350 border-slate-100 dark:border-slate-800")}
                       >
                         {sub}
                       </button>
@@ -2940,18 +2991,17 @@ export default function HomeScreen() {
                   </div>
                 </div>
 
-                {/* Grade filters */}
                 <div className="space-y-1.5">
-                  <label className="block text-[10px] uppercase font-bold text-slate-400">Khối Lớp</label>
+                  <label className="block text-[10px] uppercase font-bold text-slate-400">Khối lớp</label>
                   <div className="flex flex-wrap gap-1">
-                    {["Tất cả", "Lớp 10", "Lớp 11", "Lớp 12"].map((grade) => (
+                    {DOC_GRADE_FILTERS.map((grade) => (
                       <button
                         key={grade}
+                        type="button"
                         onClick={() => setSelectedDocGrade(grade)}
-                        className={`px-2 py-1 rounded text-[10px] font-semibold border transition ${selectedDocGrade === grade
+                        className={"px-2 py-1 rounded text-[10px] font-semibold border transition " + (selectedDocGrade === grade
                           ? "bg-[#13519c] text-white"
-                          : "bg-slate-50 hover:bg-slate-100 text-slate-655 dark:bg-slate-900/60 dark:text-slate-300 border-slate-100 dark:border-slate-800"
-                          }`}
+                          : "bg-slate-50 hover:bg-slate-100 text-slate-655 dark:bg-slate-900/60 dark:text-slate-350 border-slate-100 dark:border-slate-800")}
                       >
                         {grade}
                       </button>
@@ -2962,14 +3012,14 @@ export default function HomeScreen() {
                 <div className="space-y-1.5">
                   <label className="block text-[10px] uppercase font-bold text-slate-400">Loại tài liệu</label>
                   <div className="flex flex-wrap gap-1">
-                    {["Tất cả", "Tài liệu", "Tài liệu ôn thi", "Ôn tập", "Sách", "Giữa kì 1", "Cuối kì 2"].map((type) => (
+                    {DOC_TYPE_FILTERS.map((type) => (
                       <button
                         key={type}
+                        type="button"
                         onClick={() => setSelectedDocType(type)}
-                        className={`px-2 py-1 rounded text-[10px] font-semibold border transition ${selectedDocType === type
+                        className={"px-2 py-1 rounded text-[10px] font-semibold border transition " + (selectedDocType === type
                           ? "bg-[#13519c] text-white"
-                          : "bg-slate-50 hover:bg-slate-100 text-slate-655 dark:bg-slate-900/60 dark:text-slate-300 border-slate-100 dark:border-slate-800"
-                          }`}
+                          : "bg-slate-50 hover:bg-slate-100 text-slate-655 dark:bg-slate-900/60 dark:text-slate-350 border-slate-100 dark:border-slate-800")}
                       >
                         {type}
                       </button>
@@ -2978,16 +3028,16 @@ export default function HomeScreen() {
                 </div>
               </div>
             )}
-            {/* Sidebar Button: Trang chủ */}
+
             <button
+              type="button"
               onClick={() => {
                 setHomeSubTab("feed");
                 setActiveTab("home");
               }}
-              className={`w-full flex items-center justify-center md:justify-between p-2 md:px-3 md:py-2.5 rounded-xl text-xs font-semibold text-left transition cursor-pointer ${activeTab === "home" && homeSubTab === "feed"
+              className={"w-full flex items-center justify-center md:justify-between p-2 md:px-3 md:py-2.5 rounded-xl text-xs font-semibold text-left transition cursor-pointer " + (activeTab === "home" && homeSubTab === "feed"
                 ? "bg-slate-100 text-[#13519c] dark:bg-slate-800"
-                : "hover:bg-slate-50 text-slate-655 dark:text-slate-350"
-                }`}
+                : "hover:bg-slate-50 text-slate-655 dark:text-slate-350")}
             >
               <div className="flex items-center gap-3">
                 <div className="h-8 w-8 rounded-full flex items-center justify-center text-white shrink-0" style={{ background: "linear-gradient(135deg, #FF4E50, #F9D423)" }}>
@@ -2998,117 +3048,92 @@ export default function HomeScreen() {
               <IconChevronRight className="h-3.5 w-3.5 text-slate-300 hidden md:block shrink-0" />
             </button>
 
-
-
-            {/* Sidebar Button: Tìm gia sư giỏi */}
             <button
+              type="button"
               onClick={() => setActiveTab("courses")}
-              className={`w-full flex items-center justify-center md:justify-between p-2 md:px-3 md:py-2.5 rounded-xl text-xs font-semibold text-left transition cursor-pointer ${activeTab === "courses" ? "bg-slate-100 text-[#13519c] dark:bg-slate-800" : "hover:bg-slate-50 text-slate-655 dark:text-slate-350"
-                }`}
+              className={"w-full flex items-center justify-center md:justify-between p-2 md:px-3 md:py-2.5 rounded-xl text-xs font-semibold text-left transition cursor-pointer " + (activeTab === "courses" ? "bg-slate-100 text-[#13519c] dark:bg-slate-800" : "hover:bg-slate-50 text-slate-655 dark:text-slate-350")}
             >
               <div className="flex items-center gap-3">
                 <div className="h-8 w-8 rounded-full flex items-center justify-center text-white shrink-0" style={{ background: "linear-gradient(135deg, #FF4500, #FF8C00)" }}>
-                  <svg className="h-4 w-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M22 10v6M2 10l10-5 10 5-10 5z" />
-                    <path d="M6 12v5c0 2 2 3 6 3s6-1 6-3v-5" />
-                  </svg>
+                  <IconGraduationCap className="h-4 w-4 text-white" />
                 </div>
                 <span className="hidden md:inline">Tìm gia sư giỏi</span>
               </div>
               <IconChevronRight className="h-3.5 w-3.5 text-slate-300 hidden md:block shrink-0" />
             </button>
 
-            {/* Sidebar Button: Lớp học của con */}
             <button
+              type="button"
               onClick={() => {
                 if (!token) openAuth("login");
                 else setActiveTab("my_courses");
               }}
-              className={`w-full flex items-center justify-center md:justify-between p-2 md:px-3 md:py-2.5 rounded-xl text-xs font-semibold text-left transition cursor-pointer ${activeTab === "my_courses" ? "bg-slate-100 text-[#13519c] dark:bg-slate-800" : "hover:bg-slate-50 text-slate-655 dark:text-slate-350"
-                }`}
+              className={"w-full flex items-center justify-center md:justify-between p-2 md:px-3 md:py-2.5 rounded-xl text-xs font-semibold text-left transition cursor-pointer " + (activeTab === "my_courses" ? "bg-slate-100 text-[#13519c] dark:bg-slate-800" : "hover:bg-slate-50 text-slate-655 dark:text-slate-350")}
             >
               <div className="flex items-center gap-3">
                 <div className="h-8 w-8 rounded-full flex items-center justify-center text-white shrink-0" style={{ background: "linear-gradient(135deg, #FF8C00, #F9D423)" }}>
-                  <svg className="h-4 w-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-                  </svg>
+                  <IconBook className="h-4 w-4 text-white" />
                 </div>
                 <span className="hidden md:inline">Lớp học của con</span>
               </div>
               <IconChevronRight className="h-3.5 w-3.5 text-slate-300 hidden md:block shrink-0" />
             </button>
 
-            {/* Sidebar Button: Thư viện đề thi */}
             <button
+              type="button"
               onClick={() => {
-                setSelectedDocType("Tất cả");
+                setSelectedDocType(ALL_FILTER);
                 setActiveTab("documents");
               }}
-              className={`w-full flex items-center justify-center md:justify-between p-2 md:px-3 md:py-2.5 rounded-xl text-xs font-semibold text-left transition cursor-pointer ${activeTab === "documents" ? "bg-slate-100 text-[#13519c] dark:bg-slate-800" : "hover:bg-slate-50 text-slate-655 dark:text-slate-350"
-                }`}
+              className={"w-full flex items-center justify-center md:justify-between p-2 md:px-3 md:py-2.5 rounded-xl text-xs font-semibold text-left transition cursor-pointer " + (activeTab === "documents" ? "bg-slate-100 text-[#13519c] dark:bg-slate-800" : "hover:bg-slate-50 text-slate-655 dark:text-slate-350")}
             >
               <div className="flex items-center gap-3">
-                <div className="h-8 w-8 rounded-full flex items-center justify-center text-white shrink-0" style={{ background: "linear-gradient(135deg, #E65100, #FFA726)" }}>
-                  <svg className="h-4 w-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                    <polyline points="14 2 14 8 20 8" />
-                    <line x1="16" y1="13" x2="8" y2="13" />
-                    <line x1="16" y1="17" x2="8" y2="17" />
-                  </svg>
+                <div className="h-8 w-8 rounded-full flex items-center justify-center text-white shrink-0" style={{ background: "linear-gradient(135deg, #FF6500, #FFB000)" }}>
+                  <IconBook className="h-4 w-4 text-white" />
                 </div>
                 <span className="hidden md:inline">Thư viện đề thi</span>
               </div>
               <IconChevronRight className="h-3.5 w-3.5 text-slate-300 hidden md:block shrink-0" />
             </button>
 
-            {/* Sidebar Button: Tin tức GiasuTop */}
             <button
+              type="button"
               onClick={() => setActiveTab("news")}
-              className={`w-full flex items-center justify-center md:justify-between p-2 md:px-3 md:py-2.5 rounded-xl text-xs font-semibold text-left transition cursor-pointer ${activeTab === "news" ? "bg-slate-100 text-[#13519c] dark:bg-slate-800" : "hover:bg-slate-50 text-slate-655 dark:text-slate-350"
-                }`}
+              className={"w-full flex items-center justify-center md:justify-between p-2 md:px-3 md:py-2.5 rounded-xl text-xs font-semibold text-left transition cursor-pointer " + (activeTab === "news" ? "bg-slate-100 text-[#13519c] dark:bg-slate-800" : "hover:bg-slate-50 text-slate-655 dark:text-slate-350")}
             >
               <div className="flex items-center gap-3">
-                <div className="h-8 w-8 rounded-full flex items-center justify-center text-white shrink-0" style={{ background: "linear-gradient(135deg, #FF3D00, #FF9100)" }}>
-                  <svg className="h-4 w-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
-                    <path d="M16 8h2M16 12h2M16 16h2M6 8h6v8H6z" />
-                  </svg>
+                <div className="h-8 w-8 rounded-full flex items-center justify-center text-white shrink-0" style={{ background: "linear-gradient(135deg, #374151, #111827)" }}>
+                  <IconNewspaper className="h-4 w-4 text-white" />
                 </div>
                 <span className="hidden md:inline">Tin tức GiasuTop</span>
               </div>
               <IconChevronRight className="h-3.5 w-3.5 text-slate-300 hidden md:block shrink-0" />
             </button>
 
-            {/* Sidebar Button: Lịch học gia sư */}
             <button
+              type="button"
               onClick={() => {
                 if (!token) openAuth("login");
                 else setActiveTab("bookings");
               }}
-              className={`w-full flex items-center justify-center md:justify-between p-2 md:px-3 md:py-2.5 rounded-xl text-xs font-semibold text-left transition cursor-pointer ${activeTab === "bookings" ? "bg-slate-100 text-[#13519c] dark:bg-slate-800" : "hover:bg-slate-50 text-slate-655 dark:text-slate-350"
-                }`}
+              className={"w-full flex items-center justify-center md:justify-between p-2 md:px-3 md:py-2.5 rounded-xl text-xs font-semibold text-left transition cursor-pointer " + (activeTab === "bookings" ? "bg-slate-100 text-[#13519c] dark:bg-slate-800" : "hover:bg-slate-50 text-slate-655 dark:text-slate-350")}
             >
               <div className="flex items-center gap-3">
-                <div className="h-8 w-8 rounded-full flex items-center justify-center text-slate-850 shrink-0" style={{ background: "linear-gradient(135deg, #FFA000, #FFD54F)", color: "#1e293b" }}>
-                  <svg className="h-4 w-4 text-slate-850" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "#1e293b" }}>
-                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-                    <line x1="16" y1="2" x2="16" y2="6" />
-                    <line x1="8" y1="2" x2="8" y2="6" />
-                    <line x1="3" y1="10" x2="21" y2="10" />
-                  </svg>
+                <div className="h-8 w-8 rounded-full flex items-center justify-center text-white shrink-0" style={{ background: "linear-gradient(135deg, #F59E0B, #F97316)" }}>
+                  <IconBell className="h-4 w-4 text-white" />
                 </div>
                 <span className="hidden md:inline">Lịch học gia sư</span>
               </div>
               <IconChevronRight className="h-3.5 w-3.5 text-slate-300 hidden md:block shrink-0" />
             </button>
 
-            {/* Sidebar Button: Ví / Thu nhập */}
             <button
+              type="button"
               onClick={() => {
                 if (!token) openAuth("login");
                 else setActiveTab("wallet");
               }}
-              className={`w-full flex items-center justify-center md:justify-between p-2 md:px-3 md:py-2.5 rounded-xl text-xs font-semibold text-left transition cursor-pointer ${activeTab === "wallet" ? "bg-slate-100 text-[#13519c] dark:bg-slate-800" : "hover:bg-slate-50 text-slate-655 dark:text-slate-350"}`}
+              className={"w-full flex items-center justify-center md:justify-between p-2 md:px-3 md:py-2.5 rounded-xl text-xs font-semibold text-left transition cursor-pointer " + (activeTab === "wallet" ? "bg-slate-100 text-[#13519c] dark:bg-slate-800" : "hover:bg-slate-50 text-slate-655 dark:text-slate-350")}
             >
               <div className="flex items-center gap-3">
                 <div className="h-8 w-8 rounded-full flex items-center justify-center text-white shrink-0" style={{ background: "linear-gradient(135deg, #FF5E62, #FF9966)" }}>
@@ -3119,44 +3144,33 @@ export default function HomeScreen() {
               <IconChevronRight className="h-3.5 w-3.5 text-slate-300 hidden md:block shrink-0" />
             </button>
 
-            {/* Sidebar Button: Cộng đồng */}
             <button
+              type="button"
               onClick={() => {
                 setHomeSubTab("community");
                 setActiveTab("home");
               }}
-              className={`w-full flex items-center justify-center md:justify-between p-2 md:px-3 md:py-2.5 rounded-xl text-xs font-semibold text-left transition cursor-pointer ${activeTab === "home" && homeSubTab === "community"
+              className={"w-full flex items-center justify-center md:justify-between p-2 md:px-3 md:py-2.5 rounded-xl text-xs font-semibold text-left transition cursor-pointer " + (activeTab === "home" && homeSubTab === "community"
                 ? "bg-slate-100 text-[#13519c] dark:bg-slate-800"
-                : "hover:bg-slate-50 text-slate-655 dark:text-slate-350"
-                }`}
+                : "hover:bg-slate-50 text-slate-655 dark:text-slate-350")}
             >
               <div className="flex items-center gap-3">
                 <div className="h-8 w-8 rounded-full flex items-center justify-center text-white shrink-0" style={{ background: "linear-gradient(135deg, #D84315, #FF7043)" }}>
-                  <svg className="h-4 w-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                    <circle cx="9" cy="7" r="4" />
-                    <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-                    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-                  </svg>
+                  <IconUser className="h-4 w-4 text-white" />
                 </div>
                 <span className="hidden md:inline">Cộng đồng chat</span>
               </div>
               <IconChevronRight className="h-3.5 w-3.5 text-slate-300 hidden md:block shrink-0" />
             </button>
 
-            {/* Sidebar Button: Đăng ký làm gia sư (Or Hồ sơ gia sư if already a Tutor) */}
             <button
+              type="button"
               onClick={handleTutorRegisterClick}
               className="w-full flex items-center justify-center md:justify-between p-2 md:px-3 md:py-2.5 rounded-xl text-xs font-semibold text-left transition cursor-pointer hover:bg-slate-50 text-slate-655 dark:text-slate-350"
             >
               <div className="flex items-center gap-3">
                 <div className="h-8 w-8 rounded-full flex items-center justify-center text-white shrink-0" style={{ background: "linear-gradient(135deg, #FF3D00, #FF8008)" }}>
-                  <svg className="h-4 w-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                    <circle cx="8.5" cy="7" r="4" />
-                    <line x1="20" y1="8" x2="20" y2="14" />
-                    <line x1="23" y1="11" x2="17" y2="11" />
-                  </svg>
+                  <IconGraduationCap className="h-4 w-4 text-white" />
                 </div>
                 <span className="hidden md:inline">
                   {user?.role === "TUTOR" ? "Hồ sơ dạy học" : "Đăng ký làm gia sư"}
@@ -3165,110 +3179,127 @@ export default function HomeScreen() {
               <IconChevronRight className="h-3.5 w-3.5 text-slate-300 hidden md:block shrink-0" />
             </button>
 
-            {/* Sidebar Button: Trang cá nhân */}
-            <button
-              onClick={() => {
-                if (!token) openAuth("login");
-                else {
-                  setTutorProfileToView(null);
-                  setActiveTab("profile");
-                }
-              }}
-              className={`w-full flex items-center justify-center md:justify-between p-2 md:px-3 md:py-2.5 rounded-xl text-xs font-semibold text-left transition cursor-pointer ${activeTab === "profile" && !tutorProfileToView
-                ? "bg-slate-100 text-[#13519c] dark:bg-slate-800"
-                : "hover:bg-slate-50 text-slate-655 dark:text-slate-350"
-                }`}
-            >
-              <div className="flex items-center gap-3">
-                <div className="h-8 w-8 rounded-full flex items-center justify-center text-white shrink-0" style={{ background: "linear-gradient(135deg, #FF5E62, #FF9966)" }}>
-                  <IconUser className="h-4 w-4 text-white" />
-                </div>
-                <span className="hidden md:inline">Trang cá nhân</span>
-              </div>
-              <IconChevronRight className="h-3.5 w-3.5 text-slate-300 hidden md:block shrink-0" />
-            </button>
-
-            {/* Sidebar Link: Hỗ trợ Zalo */}
-            <a
-              href="https://zalo.me/0971920024"
-              target="_blank"
-              rel="noreferrer"
-              className="w-full flex items-center justify-center md:justify-between p-2 md:px-3 md:py-2.5 rounded-xl text-xs font-semibold text-left transition cursor-pointer hover:bg-slate-50 text-slate-655 dark:text-slate-350"
-            >
-              <div className="flex items-center gap-3">
-                <div className="h-8 w-8 rounded-full flex items-center justify-center text-white shrink-0" style={{ background: "linear-gradient(135deg, #FF7043, #FFa726)" }}>
-                  <svg className="h-4 w-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                  </svg>
-                </div>
-                <span className="hidden md:inline">Hỗ trợ Zalo</span>
-              </div>
-              <IconChevronRight className="h-3.5 w-3.5 text-slate-300 hidden md:block shrink-0" />
-            </a>
-
-            {/* Sidebar Button: Quản trị hệ thống */}
             {user && user.role === "ADMIN" && (
               <div className="space-y-1">
                 <button
+                  type="button"
                   onClick={() => {
                     setActiveTab("admin");
                     setAdminTab("subjects");
                   }}
-                  className={`w-full flex items-center justify-center md:justify-between p-2 md:px-3 md:py-2.5 rounded-xl text-xs font-semibold text-left transition cursor-pointer ${activeTab === "admin"
+                  className={"w-full flex items-center justify-center md:justify-between p-2 md:px-3 md:py-2.5 rounded-xl text-xs font-semibold text-left transition cursor-pointer " + (activeTab === "admin"
                     ? "bg-slate-100 text-[#13519c] dark:bg-slate-800"
-                    : "hover:bg-slate-50 text-slate-650 dark:text-slate-350"
-                    }`}
+                    : "hover:bg-slate-50 text-slate-655 dark:text-slate-350")}
                 >
                   <div className="flex items-center gap-3">
                     <div className="h-8 w-8 rounded-full flex items-center justify-center text-white shrink-0 bg-slate-800">
-                      <svg className="h-4 w-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                        <line x1="4" y1="21" x2="4" y2="14" />
-                        <line x1="4" y1="10" x2="4" y2="3" />
-                        <line x1="12" y1="21" x2="12" y2="12" />
-                        <line x1="12" y1="8" x2="12" y2="3" />
-                        <line x1="20" y1="21" x2="20" y2="16" />
-                        <line x1="20" y1="12" x2="20" y2="3" />
-                        <line x1="1" y1="14" x2="7" y2="14" />
-                        <line x1="9" y1="8" x2="15" y2="8" />
-                        <line x1="17" y1="16" x2="23" y2="16" />
-                      </svg>
+                      <IconUser className="h-4 w-4 text-white" />
                     </div>
                     <span className="hidden md:inline">Quản trị hệ thống</span>
                   </div>
-                  <IconChevronRight className={`h-3.5 w-3.5 text-slate-300 hidden md:block shrink-0 transition-transform ${activeTab === "admin" ? "rotate-90" : ""}`} />
+                  <IconChevronRight className={"h-3.5 w-3.5 text-slate-300 hidden md:block shrink-0 transition-transform " + (activeTab === "admin" ? "rotate-90" : "")} />
                 </button>
 
-                {/* Desktop Nested Admin Sub-menus */}
-                {user && user.role === "ADMIN" && (
+                {activeTab === "admin" && (
+                  <div className="pl-6 space-y-2 hidden md:block border-l border-slate-200 ml-4 py-1 animate-fade-in">
+                    {[
+                      ["dashboard", "📊 Dashboard Thống Kê"],
+                      ["tutors", "👩‍🏫 Duyệt Giáo Viên (" + pendingTutors.length + ")"],
+                      ["subjects", "📚 Quản lý Môn Học"],
+                      ["withdrawals", "💳 Quản lý Rút Tiền"],
+                      ["notifications", "🔔 Gửi Thông Báo"],
+                      ["escrow", "💰 Quản lý Giữ Tiền"],
+                      ["news_crud", "📰 Quản Lý Tin Tức"],
+                      ["monitor", "🖥️ Logs & Thống Kê"],
+                      ["users", "👤 Quản Lý Người Dùng"],
+                    ].map(([tab, label]) => (
+                      <button
+                        key={tab}
+                        type="button"
+                        onClick={() => { setActiveTab("admin"); setAdminTab(tab as any); }}
+                        className={"w-full text-left px-2 py-1.5 rounded-lg text-[10px] font-semibold transition " + (activeTab === "admin" && adminTab === tab ? "bg-slate-100 text-[#13519c]" : "text-slate-500 hover:bg-slate-50")}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}pe="button"
+              onClick={() => {
+                setHomeSubTab("community");
+                setActiveTab("home");
+              }}
+              className={"w-full flex items-center justify-center md:justify-between p-2 md:px-3 md:py-2.5 rounded-xl text-xs font-semibold text-left transition cursor-pointer " + (activeTab === "home" && homeSubTab === "community"
+                ? "bg-slate-100 text-[#13519c] dark:bg-slate-800"
+                : "hover:bg-slate-50 text-slate-655 dark:text-slate-350")}
+            >
+              <div className="flex items-center gap-3">
+                <div className="h-8 w-8 rounded-full flex items-center justify-center text-white shrink-0" style={{ background: "linear-gradient(135deg, #D84315, #FF7043)" }}>
+                  <IconUser className="h-4 w-4 text-white" />
+                </div>
+                <span className="hidden md:inline">Cong dong chat</span>
+              </div>
+              <IconChevronRight className="h-3.5 w-3.5 text-slate-300 hidden md:block shrink-0" />
+            </button>
+
+            <button
+              type="button"
+              onClick={handleTutorRegisterClick}
+              className="w-full flex items-center justify-center md:justify-between p-2 md:px-3 md:py-2.5 rounded-xl text-xs font-semibold text-left transition cursor-pointer hover:bg-slate-50 text-slate-655 dark:text-slate-350"
+            >
+              <div className="flex items-center gap-3">
+                <div className="h-8 w-8 rounded-full flex items-center justify-center text-white shrink-0" style={{ background: "linear-gradient(135deg, #FF3D00, #FF8008)" }}>
+                  <IconGraduationCap className="h-4 w-4 text-white" />
+                </div>
+                <span className="hidden md:inline">Dang ky lam gia su</span>
+              </div>
+              <IconChevronRight className="h-3.5 w-3.5 text-slate-300 hidden md:block shrink-0" />
+            </button>
+
+            {user && user.role === "ADMIN" && (
+              <div className="space-y-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab("admin");
+                    setAdminTab("subjects");
+                  }}
+                  className={"w-full flex items-center justify-center md:justify-between p-2 md:px-3 md:py-2.5 rounded-xl text-xs font-semibold text-left transition cursor-pointer " + (activeTab === "admin"
+                    ? "bg-slate-100 text-[#13519c] dark:bg-slate-800"
+                    : "hover:bg-slate-50 text-slate-650 dark:text-slate-350")}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="h-8 w-8 rounded-full flex items-center justify-center text-white shrink-0 bg-slate-800">
+                      <IconUser className="h-4 w-4 text-white" />
+                    </div>
+                    <span className="hidden md:inline">Quan tri he thong</span>
+                  </div>
+                  <IconChevronRight className={"h-3.5 w-3.5 text-slate-300 hidden md:block shrink-0 transition-transform " + (activeTab === "admin" ? "rotate-90" : "")} />
+                </button>
+
+                {activeTab === "admin" && (
                   <div className="pl-6 space-y-1 hidden md:block border-l border-slate-200 ml-4 py-1 animate-fade-in">
-                    <button
-                      onClick={() => { setActiveTab("admin"); setAdminTab("dashboard"); }}
-                      className={`w-full text-left px-2 py-1.5 rounded-lg text-[10px] font-semibold transition ${activeTab === "admin" && adminTab === "dashboard" ? "bg-slate-100 text-[#13519c]" : "text-slate-500 hover:bg-slate-50"
-                        }`}
-                    >
-                      📊 Dashboard Thống Kê
-                    </button>
-                    <button
-                      onClick={() => { setActiveTab("admin"); setAdminTab("tutors"); }}
-                      className={`w-full text-left px-2 py-1.5 rounded-lg text-[10px] font-semibold transition ${activeTab === "admin" && adminTab === "tutors" ? "bg-slate-100 text-[#13519c]" : "text-slate-500 hover:bg-slate-50"
-                        }`}
-                    >
-                      👩‍🏫 Duyệt Giáo Viên ({pendingTutors.length})
-                    </button>
-                    <button
-                      onClick={() => { setActiveTab("admin"); setAdminTab("subjects"); }}
-                      className={`w-full text-left px-2 py-1.5 rounded-lg text-[10px] font-semibold transition ${activeTab === "admin" && adminTab === "subjects" ? "bg-slate-100 text-[#13519c]" : "text-slate-500 hover:bg-slate-50"
-                        }`}
-                    >
-                      📚 Quản lý Môn Học
-                    </button>
-                    <button
-                      onClick={() => { setActiveTab("admin"); setAdminTab("pending_docs"); }}
-                      className={`w-full text-left px-2 py-1.5 rounded-lg text-[10px] font-semibold transition ${activeTab === "admin" && adminTab === "pending_docs" ? "bg-slate-100 text-[#13519c]" : "text-slate-500 hover:bg-slate-50"
-                        }`}
-                    >
-                      📄 Duyệt Tài Liệu ({pendingDocs.length})
-                    </button>
+                    {[
+                      ["dashboard", "Dashboard Thong Ke"],
+                      ["tutors", "Duyet Giao Vien (" + pendingTutors.length + ")"],
+                      ["subjects", "Quan ly Mon Hoc"],
+                      ["withdrawals", "Quan ly Rut Tien"],
+                      ["notifications", "Gui Thong Bao"],
+                      ["escrow", "Quan ly Giu Tien"],
+                      ["news_crud", "Quan Ly Tin Tuc"],
+                      ["monitor", "Logs & Thong Ke"],
+                      ["users", "Quan Ly Nguoi Dung"],
+                    ].map(([tab, label]) => (
+                      <button
+                        key={tab}
+                        type="button"
+                        onClick={() => { setActiveTab("admin"); setAdminTab(tab as any); }}
+                        className={"w-full text-left px-2 py-1.5 rounded-lg text-[10px] font-semibold transition " + (activeTab === "admin" && adminTab === tab ? "bg-slate-100 text-[#13519c]" : "text-slate-500 hover:bg-slate-50")}
+                      >
+                        {label}
+                      </button>
+                    ))}
                   </div>
                 )}
               </div>
@@ -3276,180 +3307,43 @@ export default function HomeScreen() {
           </div>
         </aside>
 
-        <main className="flex-1 md:ml-64 p-4 md:p-6 flex flex-col justify-between min-h-[calc(100vh-3.5rem)]">
-          <div className="flex-1">
+        {/* COLUMN 2: MAIN CONTENT */}
+        <main className="flex-1 md:pl-64 p-4 md:p-6 space-y-6">
+          {activeTab === "home" && (
+            <HomeTab
+              homeSubTab={homeSubTab}
+              setHomeSubTab={setHomeSubTab}
+              handleRegisterNotification={handleRegisterNotification}
+              handleTestNotification={handleTestNotification}
+              tutors={tutors}
+              formatVND={formatVND}
+              setViewingTutor={setViewingTutor}
+              setSelectedGradeFilter={setSelectedGradeFilter}
+              setActiveTab={setActiveTab}
+              showKntechAlert={showKntechAlert}
+              token={token}
+              user={user}
+              chatActivePartner={chatActivePartner}
+              setChatActivePartner={setChatActivePartner}
+              openAuth={openAuth}
+            />
+          )}
 
-            {/* TAB 1: HOME FEED */}
-            {activeTab === "home" && (
-              <HomeTab
-                homeSubTab={homeSubTab}
-                setHomeSubTab={setHomeSubTab}
-                handleRegisterNotification={handleRegisterNotification}
-                handleTestNotification={handleTestNotification}
-                tutors={tutors}
-                formatVND={formatVND}
-                setViewingTutor={setViewingTutor}
-                setSelectedGradeFilter={setSelectedGradeFilter}
-                setActiveTab={setActiveTab}
-                showKntechAlert={showKntechAlert}
-                token={token}
-                user={user}
-                chatActivePartner={chatActivePartner}
-                setChatActivePartner={setChatActivePartner}
-                openAuth={openAuth}
-              />
-            )}
-
-            {/* TAB 2: COURSES LISTING (renamed Tìm Gia Sư) */}
-            {activeTab === "courses" && (
-              <div className="space-y-6">
-                {/* Đội ngũ gia sư block */}
-                <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 shadow-sm border border-slate-200/50 dark:border-slate-800/80">
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className="text-xl">🎓</span>
-                    <span className="text-sm font-semibold text-slate-800 dark:text-white">Đội ngũ gia sư</span>
-                  </div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">Gia sư Bách Khoa là sinh viên các trường ĐH Bách Khoa, Khoa học Tự nhiên, ĐH Quốc gia và các trường đại học uy tín khác.</p>
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                    {tutors.slice(0, 4).map((t) => (
-                      <div key={t.user_id} className="border dark:border-slate-700 rounded-xl p-3 text-center hover:shadow-md transition-shadow">
-                        <img
-                          src={getAvatarUrl(t)}
-                          alt={t.full_name}
-                          className="w-10 h-10 bg-slate-100 dark:bg-slate-800 rounded-full mx-auto mb-2 object-cover border"
-                        />
-                        <p className="font-semibold text-xs text-slate-800 dark:text-white truncate">{t.full_name || "Gia sư"}</p>
-                        <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate">{t.school || "ĐH Bách Khoa"}</p>
-                        <p className="text-[10px] text-rose-600 font-semibold mt-1">{formatVND(t.hourly_rate)}/giờ</p>
-                        <button onClick={() => setViewingTutor(t)} className="bg-[#13519c] hover:bg-blue-800 text-white px-2 py-1 rounded cursor-pointer font-semibold text-[10px] mt-2 w-full">Đăng ký</button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="flex justify-between items-center">
-                  <h2 className="text-base font-semibold text-slate-900 dark:text-white">Đội Ngũ GiasuTop</h2>
-                  <div className="relative max-w-[180px]">
-                    <IconSearch className="absolute left-3 top-1/2 -translate-y-1/2 h-3 w-3 text-slate-400" />
-                    <input
-                      type="text"
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      placeholder="Tìm gia sư, trường học..."
-                      className="w-full h-8 pl-8 pr-3 text-xs rounded-lg border bg-white dark:bg-slate-900 focus:outline-none focus:border-[#13519c]"
-                    />
-                  </div>
-                </div>
-
-                {/* Danh mục gia sư filter inline */}
-                <div className="bg-white dark:bg-[#111827] rounded-2xl p-4 shadow-sm border border-slate-200/60 dark:border-slate-800/80 space-y-3">
-                  <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
-                    <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Danh mục gia sư</span>
-                    {selectedGradeFilter !== "Tất cả" && (
-                      <button
-                        onClick={() => setSelectedGradeFilter("Tất cả")}
-                        className="text-[10px] text-red-650 hover:text-red-500 dark:text-red-400 font-bold transition cursor-pointer"
-                      >
-                        Xóa bộ lọc x
-                      </button>
-                    )}
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {[
-                      { label: "Tất cả gia sư", filter: "Tất cả", icon: <IconUser className="h-3.5 w-3.5" /> },
-                      { label: "Gia sư cấp THPT", filter: "Cấp THPT", icon: <IconGraduationCap className="h-3.5 w-3.5" /> },
-                      { label: "Gia sư cấp THCS", filter: "Cấp THCS", icon: <IconBook className="h-3.5 w-3.5" /> },
-                      { label: "Gia sư Tiểu học", filter: "Cấp Tiểu học", icon: <IconStar className="h-3.5 w-3.5" /> },
-                      { label: "Luyện thi Đại học", filter: "Luyện thi ĐH", icon: <IconZap className="h-3.5 w-3.5" /> },
-                    ].map((cat) => (
-                      <button
-                        key={cat.filter}
-                        onClick={() => setSelectedGradeFilter(cat.filter)}
-                        className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-[11px] font-semibold transition cursor-pointer border ${selectedGradeFilter === cat.filter
-                          ? "bg-red-50 text-[#C41E3A] border-red-200 dark:bg-red-950/20 dark:text-red-450 dark:border-red-900/50 font-bold shadow-sm"
-                          : "bg-slate-50 dark:bg-slate-900/60 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-655 dark:text-slate-350 border-slate-100 dark:border-slate-800/60"
-                          }`}
-                      >
-                        <div className={`h-5.5 w-5.5 rounded-lg flex items-center justify-center shrink-0 transition ${selectedGradeFilter === cat.filter
-                          ? "bg-gradient-to-br from-[#C41E3A] to-[#8B0000] text-white"
-                          : "bg-red-100/80 text-[#C41E3A] dark:bg-slate-850 dark:text-red-400"
-                          }`}>
-                          {cat.icon}
-                        </div>
-                        <span>{cat.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Subject tabs filter bar */}
-                <div className="flex border-b dark:border-slate-800 overflow-x-auto gap-2">
-                  {subjectList.map((sub) => (
-                    <button
-                      key={sub}
-                      onClick={() => setSelectedSubject(sub)}
-                      className={`pb-2.5 px-4 text-xs font-semibold cursor-pointer transition-all relative shrink-0 ${selectedSubject === sub ? "text-[#13519c] dark:text-blue-400 font-bold" : "text-slate-400 hover:text-slate-650"
-                        }`}
-                    >
-                      {sub}
-                      {selectedSubject === sub && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#13519c] dark:bg-blue-400" />}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Tutors Cards Grid */}
-                {filteredTutors.length === 0 ? (
-                  <div className="text-center py-12 text-slate-400 text-xs bg-white dark:bg-slate-900 border rounded-xl">
-                    Chưa tìm thấy gia sư nào phù hợp với bộ lọc và điều kiện tìm kiếm.
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {filteredTutors.map((t, idx) => {
-                      const gradientClass = tutorGradients[idx % tutorGradients.length];
-                      return (
-                        <div key={t.user_id} className="bg-white dark:bg-[#111827] rounded-2xl overflow-hidden shadow-sm border border-slate-200/50 dark:border-slate-800 flex flex-col justify-between hover:scale-[1.01] transition duration-200">
-                          <div className={`p-4 ${t.card_gradient || 'bg-gradient-to-r from-blue-600 via-indigo-600 to-[#13519c]'} text-white relative h-28 flex flex-col justify-between`}>
-                            <div className="flex justify-between items-start">
-                              <span className="text-[8px] bg-black/20 px-2 py-0.5 rounded font-bold uppercase tracking-wider">GIA SƯ CHUYÊN NGHIỆP</span>
-                              <span className="text-[9px] bg-white/20 px-2 py-0.5 rounded font-semibold">{(4.7 + (t.full_name.charCodeAt(0) % 4) * 0.1).toFixed(1)} ({(t.full_name.charCodeAt(1) % 40) + 15} đánh giá)</span>
-                            </div>
-                            <h4 className="text-xs font-bold leading-tight line-clamp-2">Lớp dạy kèm: {t.subjects_to_teach.join(", ")}</h4>
-                          </div>
-                          <div className="p-4 space-y-3">
-                            <div className="flex items-center gap-3">
-                              <img
-                                src={getAvatarUrl(t)}
-                                alt={t.full_name}
-                                className="h-10 w-10 rounded-full border bg-slate-50 shrink-0 object-cover"
-                              />
-                              <div className="min-w-0">
-                                <h5 className="text-xs font-bold text-slate-900 dark:text-white truncate">{t.full_name}</h5>
-                                <p className="text-[10px] text-slate-400 truncate font-semibold">{t.school} ({t.major || "Chuyên ngành"})</p>
-                              </div>
-                            </div>
-                            <p className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-3 leading-relaxed">
-                              {t.bio || "Gia sư tận tâm dạy bám sát chương trình học, giúp con củng cố kiến thức và đạt điểm tốt."}
-                            </p>
-                            <div className="pt-3 border-t dark:border-slate-800 flex justify-between items-center">
-                              <div>
-                                <span className="block text-[9px] uppercase font-bold text-slate-400">Học phí đề xuất</span>
-                                <span className="text-sm font-bold text-rose-600">{formatVND(t.hourly_rate)}/giờ</span>
-                              </div>
-                              <button
-                                onClick={() => setViewingTutor(t)}
-                                className="bg-[#13519c] hover:bg-blue-800 text-white font-bold text-xs px-4 h-9 rounded-lg cursor-pointer transition flex items-center justify-center"
-                              >
-                                Đăng ký học ngay
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
+          {activeTab === "courses" && (
+            <CoursesTab
+              searchTerm={searchTerm}
+              setSearchTerm={setSearchTerm}
+              selectedGradeFilter={selectedGradeFilter}
+              setSelectedGradeFilter={setSelectedGradeFilter}
+              subjectList={subjectList}
+              selectedSubject={selectedSubject}
+              setSelectedSubject={setSelectedSubject}
+              filteredTutors={filteredTutors}
+              tutorGradients={tutorGradients}
+              formatVND={formatVND}
+              setViewingTutor={setViewingTutor}
+            />
+          )}
 
             {/* TAB 3: DOCUMENTS REPOSITORY (Screenshot 3 layout) */}
             {activeTab === "documents" && (
@@ -3547,16 +3441,7 @@ export default function HomeScreen() {
                         <div className="flex gap-2 shrink-0">
                           <button
                             type="button"
-                            onClick={() => {
-                              const fileUrl = doc.file_url;
-                              const isOfficeDoc = /\.(docx?|xlsx?|pptx?)$/i.test(fileUrl);
-                              const isLocal = fileUrl.includes("localhost") || fileUrl.includes("127.0.0.1") || fileUrl.includes("192.168.");
-                              if (isOfficeDoc && !isLocal) {
-                                window.open(`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(fileUrl)}`, "_blank");
-                              } else {
-                                window.open(fileUrl, "_blank");
-                              }
-                            }}
+                            onClick={() => setPreviewDoc({ title: doc.title, file_url: doc.file_url, mime_type: doc.mime_type || undefined })}
                             className="bg-slate-100 text-slate-700 hover:bg-[#13519c] hover:text-white text-xs px-3 h-8 rounded-lg cursor-pointer flex items-center gap-1 font-medium transition"
                           >
                             <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -3801,21 +3686,53 @@ export default function HomeScreen() {
                     Lớp học đang diễn ra (Đã đóng học phí)
                   </h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {appointments.filter(a => a.payment_status === "HOLDING" || a.payment_status === "RELEASED").map((appt) => (
+                    {appointments.filter(a => (a.payment_status === "HOLDING" || a.payment_status === "RELEASED") && a.status !== "DONE").map((appt) => (
                       <div key={appt.id} className="bg-white dark:bg-[#111827] rounded-xl overflow-hidden border border-slate-200/50 dark:border-slate-800 flex flex-col justify-between hover:scale-[1.01] transition duration-200">
-                        <div className="p-4 bg-gradient-to-br from-[#13519c] to-blue-700 text-white h-24 flex flex-col justify-between">
+                        <div className="p-4 bg-gradient-to-br from-[#13519c] to-blue-700 text-white h-28 flex flex-col justify-between">
+                          <span className="text-[8px] bg-white/15 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider w-max">ID {getClassId(appt)}</span>
+                          {appt.has_live_participants && (
+                            <span className="text-[8px] bg-emerald-300/25 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider w-max">ĐANG CÓ NGƯỜI</span>
+                          )}
                           <span className="text-[8px] bg-white/20 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider w-max">LỚP HỌC ĐANG DIỄN RA</span>
                           <h4 className="text-xs font-bold leading-tight line-clamp-2">Dạy kèm cùng: {user?.role === "STUDENT" ? appt.tutor_name : appt.student_name}</h4>
                         </div>
-                        <div className="p-3 text-[11px] flex justify-between items-center bg-slate-50 dark:bg-slate-900 border-t dark:border-slate-800">
-                          <span className="text-slate-400 font-medium truncate max-w-[150px]">Lớp 1-1 trực tuyến</span>
-                          <button onClick={() => { logClientActivity("JOIN_CLASSROOM", `Vào phòng học trực tuyến lớp ${appt.id}`); handleJoinClassroom(appt); }} className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded font-semibold text-[10px] cursor-pointer">Vào lớp học</button>
+                        <div className="p-3 text-[11px] space-y-2 bg-slate-50 dark:bg-slate-900 border-t dark:border-slate-800">
+                          <div className="flex justify-between items-center gap-2">
+                            <span className="text-slate-400 font-medium truncate max-w-[150px]">Lớp 1-1 trực tuyến</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                logClientActivity("JOIN_CLASSROOM", `Vào phòng học trực tuyến lớp ${appt.id}`);
+                                handleJoinClassroom(appt);
+                              }}
+                              className="text-white px-3 py-1.5 rounded-xl font-bold text-[10px] hover:opacity-90 transition cursor-pointer shadow-sm border-none"
+                              style={{ background: "linear-gradient(135deg, #10B981, #059669)" }}
+                            >
+                              Vào lớp học
+                            </button>
+                          </div>
+                          {renderCompletionStatus(appt)}
+                          {appt.status !== "DONE" && (
+                            <button
+                              type="button"
+                              disabled={hasUserConfirmedClass(appt)}
+                              onClick={() => handleConfirmClassCompleted(appt)}
+                              className="w-full mt-3 text-white px-4 py-2.5 rounded-xl font-bold text-xs hover:opacity-90 disabled:opacity-50 transition cursor-pointer shadow-sm flex items-center justify-center gap-1.5 border-none"
+                              style={
+                                hasUserConfirmedClass(appt)
+                                  ? { backgroundColor: "#cbd5e1", color: "#64748b" }
+                                  : { background: "linear-gradient(135deg, #FF5722, #E64A19)" }
+                              }
+                            >
+                              {hasUserConfirmedClass(appt) ? "Đã xác nhận, chờ bên còn lại" : "Xác nhận đã học xong"}
+                            </button>
+                          )}
                         </div>
                       </div>
                     ))}
                   </div>
 
-                  {appointments.filter(a => a.payment_status === "HOLDING" || a.payment_status === "RELEASED").length === 0 && (
+                  {appointments.filter(a => (a.payment_status === "HOLDING" || a.payment_status === "RELEASED") && a.status !== "DONE").length === 0 && (
                     <div className="text-center py-16 bg-white dark:bg-[#111827] border rounded-xl text-slate-400 text-xs shadow-sm">
                       Bác chưa có lớp học nào đang diễn ra. Vui lòng đặt lịch với gia sư và hoàn tất học phí để bắt đầu học.
                     </div>
@@ -3836,8 +3753,15 @@ export default function HomeScreen() {
                     Bác chưa đặt lịch học nào cho con học tập.
                   </div>
                 ) : (
-                  <div className="space-y-4">
-                    {appointments.map((appt) => (
+                  <div className="space-y-6">
+                    <div className="space-y-3">
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">Lịch học</h3>
+                      {appointments.filter((appt) => appt.status !== "DONE").length === 0 && (
+                        <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-4 text-xs text-slate-400 dark:border-slate-800 dark:bg-slate-900">
+                          Không còn lịch học đang mở.
+                        </div>
+                      )}
+                    {appointments.filter((appt) => appt.status !== "DONE").map((appt) => (
                       <div
                         key={appt.id}
                         className="bg-white dark:bg-[#111827] rounded-xl p-4 shadow-sm border border-slate-200/60 dark:border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4"
@@ -3856,6 +3780,7 @@ export default function HomeScreen() {
                                 Đã thanh toán - giam 3 ngày
                               </span>
                             )}
+                            {renderClassBadges(appt)}
                           </div>
 
                           <div className="mt-2 text-[11px] text-slate-500 space-y-1">
@@ -3865,6 +3790,7 @@ export default function HomeScreen() {
                               Học phí: {formatVND(appt.price_paid)}
                             </div>
                           </div>
+                          {appt.payment_status !== "UNPAID" && renderCompletionStatus(appt)}
                         </div>
 
                         <div className="flex gap-2 flex-wrap">
@@ -3886,18 +3812,67 @@ export default function HomeScreen() {
                               </button>
                             </>
                           )}
-                          {appt.payment_status === "HOLDING" && (
+                          {(appt.payment_status === "HOLDING" || appt.payment_status === "RELEASED") && appt.status !== "DONE" && (
                             <button
                               type="button"
                               onClick={() => handleJoinClassroom(appt)}
-                              className="bg-emerald-600 text-white text-[11px] font-semibold px-4 py-2 rounded-lg hover:bg-emerald-700 flex items-center gap-1.5 cursor-pointer"
+                              className="text-white text-[11px] font-bold px-4 py-2 rounded-xl hover:opacity-90 flex items-center gap-1.5 cursor-pointer border-none shadow-sm"
+                              style={{ background: "linear-gradient(135deg, #10B981, #059669)" }}
                             >
                               💻 Vào lớp học
+                            </button>
+                          )}
+                          {(appt.payment_status === "HOLDING" || appt.payment_status === "RELEASED") && appt.status !== "DONE" && (
+                            <button
+                              type="button"
+                              disabled={hasUserConfirmedClass(appt)}
+                              onClick={() => handleConfirmClassCompleted(appt)}
+                              className="text-white text-[11px] font-bold px-4 py-2 rounded-xl hover:opacity-90 disabled:opacity-50 cursor-pointer shadow-md border-none"
+                              style={
+                                hasUserConfirmedClass(appt)
+                                  ? { backgroundColor: "#cbd5e1", color: "#64748b" }
+                                  : { background: "linear-gradient(135deg, #FF5722, #E64A19)" }
+                              }
+                            >
+                              {hasUserConfirmedClass(appt) ? "Đã xác nhận" : "Xác nhận đã học xong"}
                             </button>
                           )}
                         </div>
                       </div>
                     ))}
+                    </div>
+                    <div className="space-y-3 border-t border-slate-200 pt-4 dark:border-slate-800">
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-emerald-600">Hoàn thành buổi</h3>
+                      {appointments.filter((appt) => appt.status === "DONE").length === 0 ? (
+                        <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-4 text-xs text-slate-400 dark:border-slate-800 dark:bg-slate-900">
+                          Chưa có buổi học nào hoàn thành.
+                        </div>
+                      ) : (
+                        appointments.filter((appt) => appt.status === "DONE").map((appt) => (
+                          <div
+                            key={appt.id}
+                            className="bg-white dark:bg-[#111827] rounded-xl p-4 shadow-sm border border-emerald-200/70 dark:border-emerald-900/50 flex flex-col md:flex-row md:items-center justify-between gap-4"
+                          >
+                            <div>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-xs font-semibold text-slate-900 dark:text-white">
+                                  🏫 Lớp học với: {user?.role === "STUDENT" ? appt.tutor_name : appt.student_name}
+                                </span>
+                                {renderClassBadges(appt)}
+                              </div>
+                              <div className="mt-2 text-[11px] text-slate-500 space-y-1">
+                                <div>⏱️ Giờ học: <span className="font-semibold text-slate-800 dark:text-white">{formatDateTimeText(appt.start_time)}</span></div>
+                                <div>⌛ Kết thúc: <span className="font-semibold text-slate-800 dark:text-white">{formatDateTimeText(appt.end_time)}</span></div>
+                              </div>
+                              {renderCompletionStatus(appt)}
+                            </div>
+                            <span className="w-max rounded-lg bg-emerald-600 px-4 py-2 text-[11px] font-semibold text-white">
+                              Hoàn thành buổi
+                            </span>
+                          </div>
+                        ))
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
@@ -4153,7 +4128,7 @@ export default function HomeScreen() {
             {/* TAB 9: PROFILE (View/Edit My Profile or View Tutor Profile) */}
             {activeTab === "profile" && (
               <div className="space-y-6 pb-20 md:pb-0">
-                {(tutorProfileToView ? (
+                {tutorProfileToView ? (
                   <div className="bg-white dark:bg-slate-900 rounded-2xl shadow p-5 animate-fade-in relative">
                     <button onClick={() => { setTutorProfileToView(null); setActiveTab(previousTab); }} className="absolute top-4 right-4 h-8 w-8 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-200 cursor-pointer">
                       ✕
@@ -4192,7 +4167,7 @@ export default function HomeScreen() {
                         <h3 className="font-bold mb-3 dark:text-white">Bằng cấp & Chứng chỉ ({tutorProfileToView.documents.length})</h3>
                         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                           {tutorProfileToView.documents.map((doc: any) => {
-                            const fileUrl = `http://localhost:5000/api/tutors/documents/${doc.id}?token=${token}`;
+                            const fileUrl = apiUrl(`/api/tutors/documents/${doc.id}?token=${token}`);
                             const isImage = doc.mime_type?.startsWith("image/");
                             return (
                               <div
@@ -4272,8 +4247,8 @@ export default function HomeScreen() {
                         </div>
                       )}
                     </div>
-                  </div>)
-                  : (user ? (
+                  </div>
+                ) : user ? (
                     <div className="bg-white dark:bg-slate-900 rounded-2xl shadow p-5 md:p-8 animate-fade-in">
                       <h2 className="text-xl font-bold mb-6 dark:text-white">Hồ sơ cá nhân</h2>
                       <div className="flex flex-col md:flex-row gap-8">
@@ -4418,10 +4393,10 @@ export default function HomeScreen() {
                                   <div className="bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800 flex flex-col gap-2 text-left">
                                     <span className="text-[10px] font-bold text-slate-500">CCCD Mặt trước</span>
                                     <div
-                                      onClick={() => setPreviewDoc({ title: "CCCD Mặt trước", file_url: verificationForm.cccdFront })}
+                                      onClick={() => setPreviewDoc({ title: "CCCD Mặt trước", file_url: withAuthToken(verificationForm.cccdFront), mime_type: "image/*" })}
                                       className="relative group overflow-hidden rounded h-20 bg-slate-100 dark:bg-slate-950 cursor-pointer"
                                     >
-                                      <img src={verificationForm.cccdFront} className="h-full w-full object-cover rounded hover:scale-105 transition" alt="CCCD Front" />
+                                      <img src={withAuthToken(verificationForm.cccdFront)} className="h-full w-full object-cover rounded hover:scale-105 transition" alt="CCCD Front" />
                                       <div className="absolute inset-0 bg-black/45 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-[8px] text-white font-bold">XEM 🔎</div>
                                     </div>
                                   </div>
@@ -4430,10 +4405,10 @@ export default function HomeScreen() {
                                   <div className="bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800 flex flex-col gap-2 text-left">
                                     <span className="text-[10px] font-bold text-slate-500">CCCD Mặt sau</span>
                                     <div
-                                      onClick={() => setPreviewDoc({ title: "CCCD Mặt sau", file_url: verificationForm.cccdBack })}
+                                      onClick={() => setPreviewDoc({ title: "CCCD Mặt sau", file_url: withAuthToken(verificationForm.cccdBack), mime_type: "image/*" })}
                                       className="relative group overflow-hidden rounded h-20 bg-slate-100 dark:bg-slate-950 cursor-pointer"
                                     >
-                                      <img src={verificationForm.cccdBack} className="h-full w-full object-cover rounded hover:scale-105 transition" alt="CCCD Back" />
+                                      <img src={withAuthToken(verificationForm.cccdBack)} className="h-full w-full object-cover rounded hover:scale-105 transition" alt="CCCD Back" />
                                       <div className="absolute inset-0 bg-black/45 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-[8px] text-white font-bold">XEM 🔎</div>
                                     </div>
                                   </div>
@@ -4443,15 +4418,15 @@ export default function HomeScreen() {
                                     <span className="text-[10px] font-bold text-slate-500">Bằng cấp / Chứng chỉ</span>
                                     {/\.(png|jpe?g|webp|gif)$/i.test(verificationForm.certificate) ? (
                                       <div
-                                        onClick={() => setPreviewDoc({ title: "Bằng cấp / Chứng chỉ", file_url: verificationForm.certificate })}
+                                        onClick={() => setPreviewDoc({ title: "Bằng cấp / Chứng chỉ", file_url: withAuthToken(verificationForm.certificate) })}
                                         className="relative group overflow-hidden rounded h-20 bg-slate-100 dark:bg-slate-950 cursor-pointer"
                                       >
-                                        <img src={verificationForm.certificate} className="h-full w-full object-cover rounded hover:scale-105 transition" alt="Certificate" />
+                                        <img src={withAuthToken(verificationForm.certificate)} className="h-full w-full object-cover rounded hover:scale-105 transition" alt="Certificate" />
                                         <div className="absolute inset-0 bg-black/45 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-[8px] text-white font-bold">XEM 🔎</div>
                                       </div>
                                     ) : (
                                       <div
-                                        onClick={() => setPreviewDoc({ title: "Bằng cấp / Chứng chỉ", file_url: verificationForm.certificate })}
+                                        onClick={() => setPreviewDoc({ title: "Bằng cấp / Chứng chỉ", file_url: withAuthToken(verificationForm.certificate) })}
                                         className="h-20 rounded bg-blue-50 dark:bg-slate-850 flex flex-col items-center justify-center border border-dashed border-blue-200/50 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-slate-800 transition text-[10px] font-bold gap-1 text-center cursor-pointer"
                                       >
                                         <span>📄 FILE</span>
@@ -4481,13 +4456,9 @@ export default function HomeScreen() {
                         Đăng nhập / Đăng ký ngay
                       </button>
                     </div>
-                  )
-                  )
-                )
-                }
+                  )}
               </div>
             )}
-          </div>
 
           {/* Footer - cuộn tự nhiên ở cuối main, không đè chồng */}
           <footer className="mt-12 border-t border-slate-200/60 dark:border-slate-800/60 bg-white dark:bg-[#111827] rounded-2xl p-4 shadow-sm w-full">
@@ -4566,20 +4537,11 @@ export default function HomeScreen() {
       <ClassroomView
         activeClassroom={activeClassroom}
         setActiveClassroom={setActiveClassroom}
-        drawingColorRef={drawingColorRef}
-        canvasRef={canvasRef}
-        startDrawing={startDrawing}
-        draw={draw}
-        stopDrawing={stopDrawing}
-        clearCanvas={clearCanvas}
-        isMicOn={isMicOn}
-        setIsMicOn={setIsMicOn}
-        isCamOn={isCamOn}
-        setIsCamOn={setIsCamOn}
-        chatMessages={chatMessages}
-        chatInput={chatInput}
-        setChatInput={setChatInput}
-        handleSendMessage={handleSendMessage}
+        currentUser={{
+          id: user?.id || "guest",
+          name: user?.fullName || "Khach",
+          role: (user?.role as "STUDENT" | "TUTOR" | "ADMIN" | "GUEST" | undefined) || "GUEST",
+        }}
       />
 
       <UploadDocModal
@@ -4656,10 +4618,15 @@ export default function HomeScreen() {
         cccdFrontFile={cccdFrontFile}
         cccdBackFile={cccdBackFile}
         certificatesFiles={certificatesFiles}
+        ekycResult={ekycResult}
+        identitySubmitted={tutorIdentitySubmitted}
+        teachingProfileCompleted={tutorTeachingProfileCompleted}
+        registrationStep={tutorRegistrationStep}
         setPortraitFile={setPortraitFile}
         setCccdFrontFile={setCccdFrontFile}
         setCccdBackFile={setCccdBackFile}
         setCertificatesFiles={setCertificatesFiles}
+        setEkycResult={setEkycResult}
         handleUpdateTutorProfile={handleUpdateTutorProfile}
         handleSubmitVerification={handleSubmitVerification}
         token={token}
