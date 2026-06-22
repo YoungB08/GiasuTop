@@ -583,7 +583,8 @@ export function useWebRTC(
     setConnectionState("connecting");
     const nextSocket = io(getApiUrl(), {
       withCredentials: true,
-      transports: ["websocket", "polling"],
+      transports: ["polling"],
+      upgrade: false,
     });
 
     socketRef.current = nextSocket;
