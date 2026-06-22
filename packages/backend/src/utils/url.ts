@@ -7,6 +7,10 @@ function trimTrailingSlash(value: string) {
 export function getPublicApiUrl() {
   const env = getEnv();
   if (!env.PUBLIC_API_URL) {
+    const isProd = process.env.NODE_ENV === "production" || process.env.ENV_TYPE === "1";
+    if (isProd) {
+      return "https://api.kntech.site";
+    }
     throw new Error("PUBLIC_API_URL must be configured in env.");
   }
   return trimTrailingSlash(env.PUBLIC_API_URL);
@@ -15,6 +19,10 @@ export function getPublicApiUrl() {
 export function getPublicWebUrl() {
   const env = getEnv();
   if (!env.PUBLIC_WEB_URL) {
+    const isProd = process.env.NODE_ENV === "production" || process.env.ENV_TYPE === "1";
+    if (isProd) {
+      return "https://kntech.site";
+    }
     throw new Error("PUBLIC_WEB_URL must be configured in env.");
   }
   return trimTrailingSlash(env.PUBLIC_WEB_URL);

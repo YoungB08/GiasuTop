@@ -9,7 +9,7 @@ const isProd = process.env.NODE_ENV === 'production' || envType === "1";
 
 const dbConfig = {
   host: isProd 
-    ? (process.env.DB_HOST_PROD || 'kntech.site') 
+    ? (process.env.DB_HOST_PROD || 'localhost') 
     : (process.env.DB_HOST || 'localhost'),
   user: isProd 
     ? (process.env.DB_USER_PROD || 'root') 
