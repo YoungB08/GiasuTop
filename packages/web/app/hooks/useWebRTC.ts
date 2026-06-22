@@ -104,14 +104,14 @@ export function useWebRTC(
       ? {
           roomId: roomIdOrOptions,
           userId: userIdArg || "guest",
-          userName: userNameArg || "Khach",
+          userName: userNameArg || "Khách",
           role: roleArg,
         }
       : roomIdOrOptions;
 
   const roomId = options.roomId;
   const userId = options.userId;
-  const userName = options.userName || "Khach";
+  const userName = options.userName || "Khách";
   const role = options.role || "GUEST";
   const autoJoin = options.autoJoin ?? true;
 
@@ -419,7 +419,7 @@ export function useWebRTC(
       video: false,
     });
     const track = stream.getAudioTracks()[0];
-    if (!track) throw new Error("Khong tim thay micro.");
+    if (!track) throw new Error("Không tìm thấy micro.");
 
     localStreamRef.current ||= new MediaStream();
     stopTracks(localStreamRef.current, "audio");
@@ -442,7 +442,7 @@ export function useWebRTC(
           },
     });
     const track = stream.getVideoTracks()[0];
-    if (!track) throw new Error("Khong tim thay camera.");
+    if (!track) throw new Error("Không tìm thấy camera.");
 
     localStreamRef.current ||= new MediaStream();
     stopTracks(localStreamRef.current, "video");
@@ -468,7 +468,7 @@ export function useWebRTC(
         await syncTracksToAllPeers();
         publishMediaState({ isMicOn: enabled });
       } catch (error) {
-        setMediaError(error instanceof Error ? error.message : "Khong the bat micro.");
+        setMediaError(error instanceof Error ? error.message : "Không thể bật micro.");
         isMicOnRef.current = false;
         setIsMicOn(false);
         publishMediaState({ isMicOn: false });
@@ -497,7 +497,7 @@ export function useWebRTC(
         await syncTracksToAllPeers();
         publishMediaState({ isCamOn: enabled });
       } catch (error) {
-        setMediaError(error instanceof Error ? error.message : "Khong the bat camera.");
+        setMediaError(error instanceof Error ? error.message : "Không thể bật camera.");
         isCamOnRef.current = false;
         setIsCamOn(false);
         if (!isScreenSharingRef.current) setLocalPreviewStream(null);
@@ -521,14 +521,14 @@ export function useWebRTC(
     try {
       setMediaError(null);
       if (!navigator.mediaDevices?.getDisplayMedia) {
-        throw new Error("Trinh duyet nay khong ho tro chia se man hinh. Hay dung may tinh hoac app.");
+        throw new Error("Trình duyệt này không hỗ trợ chia sẻ màn hình. Hãy dùng máy tính hoặc app.");
       }
       const stream = await navigator.mediaDevices.getDisplayMedia({
         video: { frameRate: { ideal: 30 } },
         audio: false,
       });
       const screenTrack = stream.getVideoTracks()[0];
-      if (!screenTrack) throw new Error("Khong the chia se man hinh.");
+      if (!screenTrack) throw new Error("Không thể chia sẻ màn hình.");
 
       screenTrack.onended = () => {
         void stopScreenShare();
@@ -541,7 +541,7 @@ export function useWebRTC(
       await syncTracksToAllPeers();
       publishMediaState({ isScreenSharing: true });
     } catch (error) {
-      setMediaError(error instanceof Error ? error.message : "Khong the chia se man hinh.");
+      setMediaError(error instanceof Error ? error.message : "Không thể chia sẻ màn hình.");
       isScreenSharingRef.current = false;
       setIsScreenSharing(false);
       publishMediaState({ isScreenSharing: false });
@@ -681,7 +681,7 @@ export function useWebRTC(
     });
     nextSocket.on("room-error", (payload) => {
       setConnectionState("error");
-      setMediaError(payload?.message || "Khong the vao phong hoc.");
+      setMediaError(payload?.message || "Không thể vào phòng học.");
     });
 
     nextSocket.on("room-users", ({ self, participants: existingParticipants = [], allParticipants = [] }) => {

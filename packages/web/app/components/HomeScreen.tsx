@@ -2600,7 +2600,7 @@ export default function HomeScreen() {
             </div>
             
             <div className="mt-2.5 rounded-lg bg-blue-50 px-3 py-2 text-[10px] font-semibold leading-relaxed text-[#13519c] dark:bg-blue-950/30 dark:text-blue-200">
-              iOS: mo bang Safari, bam nut Chia se, chon Them vao MH chinh.
+              iOS: mở bằng Safari, bấm nút Chia sẻ, chọn Thêm vào MH chính.
             </div>
 
             {/* Mũi tên chỉ xuống dưới nút Share của Safari */}
@@ -3889,7 +3889,7 @@ export default function HomeScreen() {
                             className="w-full h-9 px-3 text-xs rounded-lg border bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 focus:outline-none"
                             required
                           >
-                            <option value="">Chon ngan hang...</option>
+                            <option value="">Chọn ngân hàng...</option>
                             {sepayBanks.map((bank) => {
                               const code = bank.short_name || bank.shortName || bank.code;
                               return <option key={bank.code} value={code}>{code} - {bank.name}</option>;
@@ -5052,8 +5052,8 @@ function MobileAppRequired() {
           <div className="flex items-center gap-3">
             <img src="/logo.jpg" alt="GiaSuTop" className="h-10 w-10 rounded-xl bg-white object-cover" />
             <div className="min-w-0">
-              <div className="text-base font-black leading-tight">Bat buoc cai app tren dien thoai</div>
-              <div className="mt-1 text-xs text-white/75">iOS cai bang Them vao Man hinh chinh, khong dung file IPA.</div>
+              <div className="text-base font-black leading-tight">Bắt buộc cài app trên điện thoại</div>
+              <div className="mt-1 text-xs text-white/75">iOS cài bằng Thêm vào Màn hình chính, không dùng file IPA.</div>
             </div>
           </div>
         </div>
@@ -5061,23 +5061,23 @@ function MobileAppRequired() {
         <div className="p-5">
           <img
             src="/mobile-install-guide.svg"
-            alt="Huong dan tai app GiaSuTop"
+            alt="Hướng dẫn cài app GiaSuTop"
             className="mb-4 aspect-[3/2] w-full rounded-xl border border-slate-200 bg-slate-50 object-cover"
           />
 
           <div className="space-y-3 text-sm leading-relaxed text-slate-700">
-            <p className="font-semibold text-slate-950">Ban dang mo GiaSuTop bang trinh duyet mobile.</p>
-            <p>De vao lop hoc, hay cai GiaSuTop vao man hinh chinh roi dang nhap lai tai khoan. Ban web mobile se bi khoa de tranh loi share man hinh, mat am thanh hoac khong dong bo camera.</p>
+            <p className="font-semibold text-slate-950">Bạn đang mở GiaSuTop bằng trình duyệt mobile.</p>
+            <p>Để vào lớp học, hãy cài GiaSuTop vào màn hình chính rồi đăng nhập lại tài khoản. Bản web mobile sẽ bị khóa để tránh lỗi share màn hình, mất âm thanh hoặc không đồng bộ camera.</p>
           </div>
 
           <div className="mt-5 grid gap-2">
             <div className="rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm leading-relaxed text-slate-700">
               <div className="font-black text-[#13519c]">iPhone / iPad</div>
               <ol className="mt-2 list-decimal space-y-1 pl-4">
-                <li>Mo trang nay bang Safari.</li>
-                <li>Bam nut Chia se o thanh duoi Safari.</li>
-                <li>Chon Them vao Man hinh chinh.</li>
-                <li>Mo icon GiaSuTop vua tao va dang nhap lai.</li>
+                <li>Mở trang này bằng Safari.</li>
+                <li>Bấm nút Chia sẻ ở thanh dưới Safari.</li>
+                <li>Chọn Thêm vào Màn hình chính.</li>
+                <li>Mở icon GiaSuTop vừa tạo và đăng nhập lại.</li>
               </ol>
             </div>
             <a
@@ -5086,16 +5086,16 @@ function MobileAppRequired() {
               rel="noreferrer"
               className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-200 px-4 text-sm font-bold text-slate-700 hover:bg-slate-50"
             >
-              Can ho tro? Nhan Zalo KNTech
+              Cần hỗ trợ? Nhắn Zalo KNTech
             </a>
           </div>
 
           <div className="mt-5 rounded-xl bg-slate-50 p-4 text-xs leading-relaxed text-slate-600">
             <div className="font-black text-slate-900">Android</div>
             <ol className="mt-2 list-decimal space-y-1 pl-4">
-              <li>Mo bang Chrome.</li>
-              <li>Bam menu ba cham.</li>
-              <li>Chon Cai dat ung dung hoac Them vao Man hinh chinh.</li>
+              <li>Mở bằng Chrome.</li>
+              <li>Bấm menu ba chấm.</li>
+              <li>Chọn Cài đặt ứng dụng hoặc Thêm vào Màn hình chính.</li>
             </ol>
           </div>
         </div>
