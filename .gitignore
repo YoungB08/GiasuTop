@@ -19,3 +19,6 @@ Thumbs.db
 
 expo-env.d.ts
 # @end expo-cli
+
+# Next.js Cache
+packages/web/.next/cache/
