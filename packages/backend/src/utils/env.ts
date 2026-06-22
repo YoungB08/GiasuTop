@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 const EnvSchema = z.object({
-  PORT: z.coerce.number().int().positive().optional(),
+  PORT: z.string().optional(),
   TRUST_PROXY_HOPS: z.coerce.number().int().min(0).default(0),
 
   DB_HOST: z.string().default("localhost"),
@@ -13,8 +13,8 @@ const EnvSchema = z.object({
   JWT_EXPIRES_IN: z.string().default("7d"),
 
   CORS_ORIGINS: z.string().optional(), // comma-separated
-  PUBLIC_API_URL: z.string().url().optional(),
-  PUBLIC_WEB_URL: z.string().url().optional(),
+  PUBLIC_API_URL: z.string().url().or(z.literal("")).optional(),
+  PUBLIC_WEB_URL: z.string().url().or(z.literal("")).optional(),
 
   SEPAY_API_KEY: z.string().optional(),
   SEPAY_BANK_CODE: z.string().optional(),
@@ -27,7 +27,7 @@ const EnvSchema = z.object({
   SEPAY_QR_STORE_NAME: z.string().optional(),
   SEPAY_MERCHANT_ID: z.string().optional(),
   SEPAY_SECRET_KEY: z.string().optional(),
-  SEPAY_ENV: z.enum(["sandbox", "production"]).default("sandbox"),
+  SEPAY_ENV: z.enum(["", "sandbox", "production"]).default("sandbox"),
 
   ZALO_BOT_TOKEN: z.string().optional(),
   ZALO_ADMIN_CHAT_IDS: z.string().optional(), // comma-separated chat ids
