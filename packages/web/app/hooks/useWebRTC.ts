@@ -325,11 +325,18 @@ export function useWebRTC(
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
         currentSocket.emit("offer", { target: targetSocketId, offer: pc.localDescription });
+      } catch (error) {
+        closePeer(targetSocketId);
+        const nextPc = createPeerConnection(targetSocketId, currentSocket);
+        await syncTracksToPeer(nextPc);
+        const offer = await nextPc.createOffer();
+        await nextPc.setLocalDescription(offer);
+        currentSocket.emit("offer", { target: targetSocketId, offer: nextPc.localDescription });
       } finally {
         makingOfferRef.current[targetSocketId] = false;
       }
     },
-    [createPeerConnection, syncTracksToPeer]
+    [closePeer, createPeerConnection, syncTracksToPeer]
   );
   sendOfferRef.current = sendOffer;
 
@@ -341,20 +348,10 @@ export function useWebRTC(
         const peerSocketId = participant.socketId;
         if (!peerSocketId || peerSocketId === selfId) return;
 
-        const pc = createPeerConnection(peerSocketId, currentSocket);
-        const shouldRecoverOffer = !pc.localDescription && !pc.remoteDescription && isPolitePeer(selfId, peerSocketId);
-
-        if (shouldRecoverOffer) {
-          globalThis.setTimeout(() => {
-            const currentPc = peersRef.current[peerSocketId];
-            if (currentPc && !currentPc.localDescription && !currentPc.remoteDescription) {
-              void sendOffer(peerSocketId).catch((error) => console.warn("Cannot recover WebRTC offer", error));
-            }
-          }, 700);
-        }
+        createPeerConnection(peerSocketId, currentSocket);
       });
     },
-    [createPeerConnection, selfSocketId, sendOffer]
+    [createPeerConnection, selfSocketId]
   );
   ensureParticipantPeersRef.current = ensureParticipantPeers;
 
