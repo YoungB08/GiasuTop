@@ -89,6 +89,10 @@ function isPolitePeer(selfSocketId: string | null | undefined, peerSocketId: str
   return selfSocketId > peerSocketId;
 }
 
+function isPeerClosed(pc: RTCPeerConnection | null | undefined) {
+  return !pc || pc.connectionState === "closed" || pc.signalingState === "closed";
+}
+
 export function useWebRTC(
   roomIdOrOptions: string | UseWebRTCOptions,
   userIdArg?: string,
@@ -226,13 +230,19 @@ export function useWebRTC(
 
   const syncTracksToPeer = useCallback(
     async (pc: RTCPeerConnection) => {
+      if (isPeerClosed(pc)) return;
+
       const audioSender = getSender(pc, "audio");
       const videoSender = getSender(pc, "video");
       const audioTrack = isMicOnRef.current ? getLocalAudioTrack() : null;
       const videoTrack = getOutgoingVideoTrack();
 
-      if (audioSender) await audioSender.replaceTrack(audioTrack);
-      if (videoSender) await videoSender.replaceTrack(videoTrack);
+      try {
+        if (audioSender && !isPeerClosed(pc)) await audioSender.replaceTrack(audioTrack);
+        if (videoSender && !isPeerClosed(pc)) await videoSender.replaceTrack(videoTrack);
+      } catch (error) {
+        if (!isPeerClosed(pc)) throw error;
+      }
     },
     [getLocalAudioTrack, getOutgoingVideoTrack, getSender]
   );
@@ -271,10 +281,8 @@ export function useWebRTC(
       };
 
       pc.onconnectionstatechange = () => {
-        if (["failed", "closed", "disconnected"].includes(pc.connectionState)) {
-          if (pc.connectionState === "failed") {
-            pc.restartIce?.();
-          }
+        if (pc.connectionState === "failed") {
+          pc.restartIce?.();
         }
       };
 
@@ -299,7 +307,8 @@ export function useWebRTC(
 
   const closePeer = useCallback(
     (socketId: string) => {
-      peersRef.current[socketId]?.close();
+      const pc = peersRef.current[socketId];
+      if (pc && !isPeerClosed(pc)) pc.close();
       delete peersRef.current[socketId];
       delete remoteStreamsRef.current[socketId];
       delete pendingIceRef.current[socketId];
@@ -317,19 +326,24 @@ export function useWebRTC(
       if (!currentSocket || makingOfferRef.current[targetSocketId]) return;
 
       const pc = createPeerConnection(targetSocketId, currentSocket);
+      if (isPeerClosed(pc)) return;
       await syncTracksToPeer(pc);
-      if (pc.signalingState !== "stable") return;
+      if (isPeerClosed(pc) || pc.signalingState !== "stable") return;
 
       try {
         makingOfferRef.current[targetSocketId] = true;
         const offer = await pc.createOffer();
+        if (isPeerClosed(pc)) return;
         await pc.setLocalDescription(offer);
         currentSocket.emit("offer", { target: targetSocketId, offer: pc.localDescription });
       } catch (error) {
         closePeer(targetSocketId);
         const nextPc = createPeerConnection(targetSocketId, currentSocket);
+        if (isPeerClosed(nextPc)) return;
         await syncTracksToPeer(nextPc);
+        if (isPeerClosed(nextPc) || nextPc.signalingState !== "stable") return;
         const offer = await nextPc.createOffer();
+        if (isPeerClosed(nextPc)) return;
         await nextPc.setLocalDescription(offer);
         currentSocket.emit("offer", { target: targetSocketId, offer: nextPc.localDescription });
       } finally {
@@ -564,7 +578,7 @@ export function useWebRTC(
 
   const leaveRoom = useCallback(() => {
     socketRef.current?.emit("leave-room");
-    Object.keys(peersRef.current).forEach(closePeer);
+    Object.keys(peersRef.current).forEach((socketId) => closePeerRef.current(socketId));
     stopTracks(localStreamRef.current);
     stopTracks(screenStreamRef.current);
     localStreamRef.current = makeEmptyMediaStream();
@@ -572,7 +586,7 @@ export function useWebRTC(
     setLocalPreviewStream(null);
     setRemoteStreams({});
     setParticipants([]);
-  }, [closePeer, stopTracks]);
+  }, [stopTracks]);
 
   const localParticipant = useMemo(
     () => participants.find((participant) => participant.socketId === selfSocketId) || null,
@@ -664,19 +678,22 @@ export function useWebRTC(
       if (!caller || !offer) return;
       try {
         const pc = createPeerConnectionRef.current(caller, nextSocket);
-        if (!pc) return;
+        if (!pc || isPeerClosed(pc)) return;
         const offerCollision = makingOfferRef.current[caller] || pc.signalingState !== "stable";
         const ignoreOffer = !isPolitePeer(nextSocket.id, caller) && offerCollision;
         if (ignoreOffer) return;
 
-        if (offerCollision) {
+        if (offerCollision && !isPeerClosed(pc)) {
           await pc.setLocalDescription({ type: "rollback" });
         }
 
+        if (isPeerClosed(pc)) return;
         await pc.setRemoteDescription(new RTCSessionDescription(offer));
         await syncTracksToPeerRef.current(pc);
         await flushPendingIceRef.current(caller, pc);
+        if (isPeerClosed(pc)) return;
         const answer = await pc.createAnswer();
+        if (isPeerClosed(pc)) return;
         await pc.setLocalDescription(answer);
         nextSocket.emit("answer", { target: caller, answer: pc.localDescription });
       } catch (error) {
@@ -686,7 +703,7 @@ export function useWebRTC(
 
     nextSocket.on("answer", async ({ caller, answer }) => {
       const pc = caller ? peersRef.current[caller] : null;
-      if (!pc || !answer) return;
+      if (!pc || isPeerClosed(pc) || !answer) return;
       try {
         await pc.setRemoteDescription(new RTCSessionDescription(answer));
         await flushPendingIceRef.current(caller, pc);
@@ -698,7 +715,7 @@ export function useWebRTC(
     nextSocket.on("ice-candidate", async ({ caller, candidate }) => {
       if (!caller || !candidate) return;
       const pc = peersRef.current[caller] || createPeerConnectionRef.current(caller, nextSocket);
-      if (!pc) return;
+      if (!pc || isPeerClosed(pc)) return;
 
       if (!pc.remoteDescription) {
         pendingIceRef.current[caller] ||= [];
@@ -707,6 +724,7 @@ export function useWebRTC(
       }
 
       try {
+        if (isPeerClosed(pc)) return;
         await pc.addIceCandidate(new RTCIceCandidate(candidate));
       } catch (error) {
         console.warn("Cannot add ICE candidate", error);
