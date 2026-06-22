@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { io, Socket } from "socket.io-client";
-import { API_BASE_URL } from "../utils/api";
+import { SOCKET_BASE_URL } from "../utils/api";
 
 const ICE_SERVERS: RTCConfiguration = {
   iceServers: [
@@ -65,7 +65,7 @@ type StreamMap = Record<string, MediaStream>;
 type PendingIceMap = Record<string, RTCIceCandidateInit[]>;
 
 function getApiUrl() {
-  return process.env.NEXT_PUBLIC_SOCKET_URL || API_BASE_URL || window.location.origin;
+  return SOCKET_BASE_URL;
 }
 
 function uniqueParticipants(participants: RoomParticipant[]) {

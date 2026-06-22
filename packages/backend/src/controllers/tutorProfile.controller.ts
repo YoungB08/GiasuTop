@@ -7,6 +7,7 @@ import { assertUploadedFilesAreSafe, getTutorPrivateUploadPath } from "../utils/
 import { notifyAdmins } from "../services/notification.service";
 import { notifyZaloAdmins, zaloFormat } from "../services/zaloAdmin.service";
 import { EKYC_AUTO_ACCEPT_THRESHOLD, parseEkycPayload } from "../services/ekyc.service";
+import { publicApiUrl } from "../utils/url";
 
 
 
@@ -42,9 +43,8 @@ function requireTutor(req: AuthedRequest, res: Response) {
   return true;
 }
 
-function documentUrl(req: AuthedRequest, documentId: number) {
-  const base = `${req.protocol}://${req.get("host")}`;
-  return `${base}/api/tutors/me/documents/${documentId}/file`;
+function documentUrl(_req: AuthedRequest, documentId: number) {
+  return publicApiUrl(`/api/tutors/me/documents/${documentId}/file`);
 }
 
 function normalizeDocumentRows(req: AuthedRequest, docs: any[]) {

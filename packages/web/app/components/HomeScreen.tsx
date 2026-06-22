@@ -541,7 +541,7 @@ export default function HomeScreen() {
     const absoluteUrl = apiUrl(url);
     if (!token) return absoluteUrl;
     try {
-      const parsed = new URL(absoluteUrl, typeof window !== "undefined" ? window.location.origin : undefined);
+      const parsed = new URL(absoluteUrl);
       if (!parsed.searchParams.has("token")) parsed.searchParams.set("token", token);
       return parsed.toString();
     } catch {

@@ -313,25 +313,7 @@ self.__SERVER_FILES_MANIFEST={
     "turbopack": {
       "root": "D:\\GiaSu-KNTech"
     },
-    "distDirRoot": ".next",
-    "_originalRewrites": {
-      "beforeFiles": [],
-      "afterFiles": [
-        {
-          "source": "/api/:path*",
-          "destination": "http://127.0.0.1:5000/api/:path*"
-        },
-        {
-          "source": "/uploads/:path*",
-          "destination": "http://127.0.0.1:5000/uploads/:path*"
-        },
-        {
-          "source": "/socket.io/:path*",
-          "destination": "http://127.0.0.1:5000/socket.io/:path*"
-        }
-      ],
-      "fallback": []
-    }
+    "distDirRoot": ".next"
   },
   "appDir": "D:\\GiaSu-KNTech\\packages\\web",
   "relativeAppDir": "packages\\web",
