@@ -14,11 +14,11 @@
   <rect x="386" y="294" width="188" height="22" rx="11" fill="#CBD5E1"/>
   <rect x="386" y="332" width="126" height="22" rx="11" fill="#CBD5E1"/>
   <rect x="400" y="396" width="160" height="52" rx="18" fill="#13519C"/>
-  <path d="M480 372V424" stroke="#FFFFFF" stroke-width="16" stroke-linecap="round"/>
-  <path d="M452 402L480 430L508 402" stroke="#FFFFFF" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M480 430V378" stroke="#FFFFFF" stroke-width="16" stroke-linecap="round"/>
+  <path d="M452 406L480 378L508 406" stroke="#FFFFFF" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
   <circle cx="210" cy="186" r="58" fill="#FFFFFF"/>
-  <path d="M210 152V204" stroke="#FF5A1F" stroke-width="18" stroke-linecap="round"/>
-  <path d="M182 182L210 210L238 182" stroke="#FF5A1F" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M210 212V160" stroke="#FF5A1F" stroke-width="18" stroke-linecap="round"/>
+  <path d="M182 188L210 160L238 188" stroke="#FF5A1F" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
   <circle cx="750" cy="424" r="58" fill="#FFFFFF"/>
   <path d="M724 424H776" stroke="#13519C" stroke-width="18" stroke-linecap="round"/>
   <path d="M750 398V450" stroke="#13519C" stroke-width="18" stroke-linecap="round"/>

@@ -2599,14 +2599,8 @@ export default function HomeScreen() {
               </button>
             </div>
             
-            <div className="mt-2.5 flex items-center gap-2">
-              <a
-                href="/kntech-mobile.ipa"
-                download
-                className="inline-flex items-center gap-1 bg-[#13519c] text-white px-2.5 py-1 rounded-lg text-[10px] font-bold shadow hover:bg-blue-800 transition cursor-pointer"
-              >
-                <i className="fa-solid fa-download"></i> Tải IPA
-              </a>
+            <div className="mt-2.5 rounded-lg bg-blue-50 px-3 py-2 text-[10px] font-semibold leading-relaxed text-[#13519c] dark:bg-blue-950/30 dark:text-blue-200">
+              iOS: mo bang Safari, bam nut Chia se, chon Them vao MH chinh.
             </div>
 
             {/* Mũi tên chỉ xuống dưới nút Share của Safari */}
@@ -5058,8 +5052,8 @@ function MobileAppRequired() {
           <div className="flex items-center gap-3">
             <img src="/logo.jpg" alt="GiaSuTop" className="h-10 w-10 rounded-xl bg-white object-cover" />
             <div className="min-w-0">
-              <div className="text-base font-black leading-tight">Bat buoc dung app tren dien thoai</div>
-              <div className="mt-1 text-xs text-white/75">Phong hoc can app de mic, camera va am thanh on dinh.</div>
+              <div className="text-base font-black leading-tight">Bat buoc cai app tren dien thoai</div>
+              <div className="mt-1 text-xs text-white/75">iOS cai bang Them vao Man hinh chinh, khong dung file IPA.</div>
             </div>
           </div>
         </div>
@@ -5073,34 +5067,35 @@ function MobileAppRequired() {
 
           <div className="space-y-3 text-sm leading-relaxed text-slate-700">
             <p className="font-semibold text-slate-950">Ban dang mo GiaSuTop bang trinh duyet mobile.</p>
-            <p>De vao lop hoc, hay tai app GiaSuTop roi dang nhap lai tai khoan. Ban web mobile se bi khoa de tranh loi share man hinh, mat am thanh hoac khong dong bo camera.</p>
+            <p>De vao lop hoc, hay cai GiaSuTop vao man hinh chinh roi dang nhap lai tai khoan. Ban web mobile se bi khoa de tranh loi share man hinh, mat am thanh hoac khong dong bo camera.</p>
           </div>
 
           <div className="mt-5 grid gap-2">
-            <a
-              href="/kntech-mobile.ipa"
-              download
-              className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-[#13519c] px-4 text-sm font-black text-white shadow hover:bg-blue-800"
-            >
-              <IconDownload className="h-4 w-4" />
-              Tai app iOS
-            </a>
+            <div className="rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm leading-relaxed text-slate-700">
+              <div className="font-black text-[#13519c]">iPhone / iPad</div>
+              <ol className="mt-2 list-decimal space-y-1 pl-4">
+                <li>Mo trang nay bang Safari.</li>
+                <li>Bam nut Chia se o thanh duoi Safari.</li>
+                <li>Chon Them vao Man hinh chinh.</li>
+                <li>Mo icon GiaSuTop vua tao va dang nhap lai.</li>
+              </ol>
+            </div>
             <a
               href="https://zalo.me/0971920024"
               target="_blank"
               rel="noreferrer"
               className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-200 px-4 text-sm font-bold text-slate-700 hover:bg-slate-50"
             >
-              Nhan app Android qua Zalo
+              Can ho tro? Nhan Zalo KNTech
             </a>
           </div>
 
           <div className="mt-5 rounded-xl bg-slate-50 p-4 text-xs leading-relaxed text-slate-600">
-            <div className="font-black text-slate-900">Cach cai nhanh</div>
+            <div className="font-black text-slate-900">Android</div>
             <ol className="mt-2 list-decimal space-y-1 pl-4">
-              <li>Bam nut tai app phu hop voi may.</li>
-              <li>Mo file vua tai va xac nhan cai dat.</li>
-              <li>Mo app GiaSuTop, dang nhap va vao lai lich hoc.</li>
+              <li>Mo bang Chrome.</li>
+              <li>Bam menu ba cham.</li>
+              <li>Chon Cai dat ung dung hoac Them vao Man hinh chinh.</li>
             </ol>
           </div>
         </div>
