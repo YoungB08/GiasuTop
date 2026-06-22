@@ -142,6 +142,14 @@ export function useWebRTC(
   const isCamOnRef = useRef(Boolean(options.initialCamOn));
   const isScreenSharingRef = useRef(false);
   const isHandRaisedRef = useRef(false);
+  const closePeerRef = useRef<(socketId: string) => void>(() => {});
+  const createPeerConnectionRef = useRef<(socketId: string, currentSocket?: Socket | null) => RTCPeerConnection | null>(() => null);
+  const ensureParticipantPeersRef = useRef<(participants: RoomParticipant[], currentSocket?: Socket | null) => void>(() => {});
+  const flushPendingIceRef = useRef<(socketId: string, pc: RTCPeerConnection) => Promise<void>>(async () => {});
+  const sendOfferRef = useRef<(targetSocketId: string) => Promise<void>>(async () => {});
+  const setMicrophoneEnabledRef = useRef<(enabled: boolean) => Promise<void>>(async () => {});
+  const stopTracksRef = useRef<(stream: MediaStream | null, kind?: "audio" | "video") => void>(() => {});
+  const syncTracksToPeerRef = useRef<(pc: RTCPeerConnection) => Promise<void>>(async () => {});
 
   const refreshPeerState = useCallback(() => {
     setPeers({ ...peersRef.current });
@@ -228,6 +236,7 @@ export function useWebRTC(
     },
     [getLocalAudioTrack, getOutgoingVideoTrack, getSender]
   );
+  syncTracksToPeerRef.current = syncTracksToPeer;
 
   const syncTracksToAllPeers = useCallback(async () => {
     await Promise.all(Object.values(peersRef.current).map((pc) => syncTracksToPeer(pc).catch(console.warn)));
@@ -246,6 +255,7 @@ export function useWebRTC(
       }
     }
   }, []);
+  flushPendingIceRef.current = flushPendingIce;
 
   const createPeerConnection = useCallback(
     (socketId: string, currentSocket = socketRef.current) => {
@@ -285,6 +295,7 @@ export function useWebRTC(
     },
     [ensureTransceivers, refreshPeerState, refreshRemoteStreams, syncTracksToPeer]
   );
+  createPeerConnectionRef.current = createPeerConnection;
 
   const closePeer = useCallback(
     (socketId: string) => {
@@ -298,6 +309,7 @@ export function useWebRTC(
     },
     [refreshPeerState, refreshRemoteStreams]
   );
+  closePeerRef.current = closePeer;
 
   const sendOffer = useCallback(
     async (targetSocketId: string) => {
@@ -319,6 +331,7 @@ export function useWebRTC(
     },
     [createPeerConnection, syncTracksToPeer]
   );
+  sendOfferRef.current = sendOffer;
 
   const ensureParticipantPeers = useCallback(
     (nextParticipants: RoomParticipant[], currentSocket = socketRef.current) => {
@@ -343,6 +356,7 @@ export function useWebRTC(
     },
     [createPeerConnection, selfSocketId, sendOffer]
   );
+  ensureParticipantPeersRef.current = ensureParticipantPeers;
 
   const stopTracks = useCallback((stream: MediaStream | null, kind?: "audio" | "video") => {
     if (!stream) return;
@@ -352,6 +366,7 @@ export function useWebRTC(
       stream.removeTrack(track);
     });
   }, []);
+  stopTracksRef.current = stopTracks;
 
   const ensureAudioTrack = useCallback(async () => {
     const existing = getLocalAudioTrack();
@@ -419,6 +434,7 @@ export function useWebRTC(
     },
     [ensureAudioTrack, publishMediaState, refreshDevices, stopTracks, syncTracksToAllPeers]
   );
+  setMicrophoneEnabledRef.current = setMicrophoneEnabled;
 
   const setCameraEnabled = useCallback(
     async (enabled: boolean) => {
@@ -623,13 +639,13 @@ export function useWebRTC(
       setSelfSocketId(self?.socketId || nextSocket.id || null);
       const nextParticipants = uniqueParticipants(allParticipants.length ? allParticipants : [self, ...existingParticipants].filter(Boolean));
       setParticipants(nextParticipants);
-      ensureParticipantPeers(nextParticipants, nextSocket);
+      ensureParticipantPeersRef.current(nextParticipants, nextSocket);
     });
 
     nextSocket.on("participants-updated", ({ participants: nextParticipants = [] }) => {
       const normalizedParticipants = uniqueParticipants(nextParticipants);
       setParticipants(normalizedParticipants);
-      ensureParticipantPeers(normalizedParticipants, nextSocket);
+      ensureParticipantPeersRef.current(normalizedParticipants, nextSocket);
     });
 
     nextSocket.on("participant-updated", (participant: RoomParticipant) => {
@@ -640,7 +656,7 @@ export function useWebRTC(
       setParticipants((prev) => uniqueParticipants([...prev.filter((item) => item.socketId !== participant.socketId), participant]));
       if (participant.socketId) {
         try {
-          await sendOffer(participant.socketId);
+          await sendOfferRef.current(participant.socketId);
         } catch (error) {
           console.warn("Cannot send WebRTC offer", error);
         }
@@ -650,7 +666,8 @@ export function useWebRTC(
     nextSocket.on("offer", async ({ caller, offer }) => {
       if (!caller || !offer) return;
       try {
-        const pc = createPeerConnection(caller, nextSocket);
+        const pc = createPeerConnectionRef.current(caller, nextSocket);
+        if (!pc) return;
         const offerCollision = makingOfferRef.current[caller] || pc.signalingState !== "stable";
         const ignoreOffer = !isPolitePeer(nextSocket.id, caller) && offerCollision;
         if (ignoreOffer) return;
@@ -660,8 +677,8 @@ export function useWebRTC(
         }
 
         await pc.setRemoteDescription(new RTCSessionDescription(offer));
-        await syncTracksToPeer(pc);
-        await flushPendingIce(caller, pc);
+        await syncTracksToPeerRef.current(pc);
+        await flushPendingIceRef.current(caller, pc);
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
         nextSocket.emit("answer", { target: caller, answer: pc.localDescription });
@@ -675,7 +692,7 @@ export function useWebRTC(
       if (!pc || !answer) return;
       try {
         await pc.setRemoteDescription(new RTCSessionDescription(answer));
-        await flushPendingIce(caller, pc);
+        await flushPendingIceRef.current(caller, pc);
       } catch (error) {
         console.warn("Cannot apply WebRTC answer", error);
       }
@@ -683,7 +700,8 @@ export function useWebRTC(
 
     nextSocket.on("ice-candidate", async ({ caller, candidate }) => {
       if (!caller || !candidate) return;
-      const pc = peersRef.current[caller] || createPeerConnection(caller, nextSocket);
+      const pc = peersRef.current[caller] || createPeerConnectionRef.current(caller, nextSocket);
+      if (!pc) return;
 
       if (!pc.remoteDescription) {
         pendingIceRef.current[caller] ||= [];
@@ -699,7 +717,7 @@ export function useWebRTC(
     });
 
     nextSocket.on("user-disconnected", ({ socketId }) => {
-      if (socketId) closePeer(socketId);
+      if (socketId) closePeerRef.current(socketId);
       setParticipants((prev) => prev.filter((participant) => participant.socketId !== socketId));
     });
 
@@ -722,7 +740,7 @@ export function useWebRTC(
 
     nextSocket.on("host-mute", () => {
       setMediaError("Host da tat micro cua ban.");
-      void setMicrophoneEnabled(false);
+      void setMicrophoneEnabledRef.current(false);
     });
 
     return () => {
@@ -732,10 +750,10 @@ export function useWebRTC(
       socketRef.current = null;
       setSocket(null);
       setConnectionState("disconnected");
-      Object.keys(peersRef.current).forEach(closePeer);
+      Object.keys(peersRef.current).forEach((socketId) => closePeerRef.current(socketId));
       pendingIceRef.current = {};
-      stopTracks(localStreamRef.current);
-      stopTracks(screenStreamRef.current);
+      stopTracksRef.current(localStreamRef.current);
+      stopTracksRef.current(screenStreamRef.current);
       localStreamRef.current = makeEmptyMediaStream();
       screenStreamRef.current = null;
       setParticipants([]);
@@ -745,16 +763,8 @@ export function useWebRTC(
     };
   }, [
     autoJoin,
-    closePeer,
-    createPeerConnection,
-    ensureParticipantPeers,
-    flushPendingIce,
     roomId,
     role,
-    sendOffer,
-    setMicrophoneEnabled,
-    stopTracks,
-    syncTracksToPeer,
     userId,
     userName,
   ]);
