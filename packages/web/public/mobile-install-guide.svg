@@ -1,0 +1,27 @@
+<svg width="960" height="640" viewBox="0 0 960 640" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="960" height="640" rx="48" fill="#F8FAFC"/>
+  <rect x="72" y="76" width="816" height="488" rx="40" fill="#EAF4FF"/>
+  <rect x="312" y="58" width="336" height="524" rx="48" fill="#0F172A"/>
+  <rect x="338" y="94" width="284" height="452" rx="30" fill="#FFFFFF"/>
+  <rect x="424" y="76" width="112" height="12" rx="6" fill="#334155"/>
+  <circle cx="480" cy="520" r="13" fill="#334155"/>
+  <rect x="382" y="146" width="196" height="74" rx="20" fill="#FF5A1F"/>
+  <circle cx="424" cy="183" r="21" fill="#FFFFFF"/>
+  <path d="M424 169L440 178V192L424 201L408 192V178L424 169Z" fill="#FF5A1F"/>
+  <rect x="458" y="165" width="84" height="12" rx="6" fill="#FFFFFF"/>
+  <rect x="458" y="188" width="62" height="10" rx="5" fill="#FFD9C9"/>
+  <rect x="386" y="256" width="188" height="22" rx="11" fill="#CBD5E1"/>
+  <rect x="386" y="294" width="188" height="22" rx="11" fill="#CBD5E1"/>
+  <rect x="386" y="332" width="126" height="22" rx="11" fill="#CBD5E1"/>
+  <rect x="400" y="396" width="160" height="52" rx="18" fill="#13519C"/>
+  <path d="M480 372V424" stroke="#FFFFFF" stroke-width="16" stroke-linecap="round"/>
+  <path d="M452 402L480 430L508 402" stroke="#FFFFFF" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="210" cy="186" r="58" fill="#FFFFFF"/>
+  <path d="M210 152V204" stroke="#FF5A1F" stroke-width="18" stroke-linecap="round"/>
+  <path d="M182 182L210 210L238 182" stroke="#FF5A1F" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="750" cy="424" r="58" fill="#FFFFFF"/>
+  <path d="M724 424H776" stroke="#13519C" stroke-width="18" stroke-linecap="round"/>
+  <path d="M750 398V450" stroke="#13519C" stroke-width="18" stroke-linecap="round"/>
+  <path d="M257 250C285 270 302 292 312 324" stroke="#FF5A1F" stroke-width="14" stroke-linecap="round" stroke-dasharray="4 28"/>
+  <path d="M648 420C674 414 696 403 718 384" stroke="#13519C" stroke-width="14" stroke-linecap="round" stroke-dasharray="4 28"/>
+</svg>

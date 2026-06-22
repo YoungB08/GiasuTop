@@ -128,6 +128,7 @@ export function useWebRTC(
   const [isMicOn, setIsMicOn] = useState(Boolean(options.initialMicOn));
   const [isCamOn, setIsCamOn] = useState(Boolean(options.initialCamOn));
   const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const [canShareScreen, setCanShareScreen] = useState(false);
   const [isHandRaised, setIsHandRaised] = useState(false);
   const [audioDevices, setAudioDevices] = useState<ClassroomDevice[]>([]);
   const [videoDevices, setVideoDevices] = useState<ClassroomDevice[]>([]);
@@ -249,7 +250,24 @@ export function useWebRTC(
   syncTracksToPeerRef.current = syncTracksToPeer;
 
   const syncTracksToAllPeers = useCallback(async () => {
-    await Promise.all(Object.values(peersRef.current).map((pc) => syncTracksToPeer(pc).catch(console.warn)));
+    await Promise.all(
+      Object.entries(peersRef.current).map(async ([socketId, pc]) => {
+        if (isPeerClosed(pc)) {
+          closePeerRef.current(socketId);
+          return;
+        }
+
+        try {
+          await syncTracksToPeer(pc);
+        } catch (error) {
+          if (isPeerClosed(pc)) {
+            closePeerRef.current(socketId);
+            return;
+          }
+          console.warn("Cannot sync media tracks", error);
+        }
+      })
+    );
   }, [syncTracksToPeer]);
 
   const flushPendingIce = useCallback(async (socketId: string, pc: RTCPeerConnection) => {
@@ -269,7 +287,16 @@ export function useWebRTC(
 
   const createPeerConnection = useCallback(
     (socketId: string, currentSocket = socketRef.current) => {
-      if (peersRef.current[socketId]) return peersRef.current[socketId];
+      const existingPeer = peersRef.current[socketId];
+      if (existingPeer && !isPeerClosed(existingPeer)) return existingPeer;
+      if (existingPeer) {
+        delete peersRef.current[socketId];
+        delete remoteStreamsRef.current[socketId];
+        delete pendingIceRef.current[socketId];
+        delete makingOfferRef.current[socketId];
+        refreshPeerState();
+        refreshRemoteStreams();
+      }
 
       const pc = new RTCPeerConnection(ICE_SERVERS);
       ensureTransceivers(pc);
@@ -283,6 +310,8 @@ export function useWebRTC(
       pc.onconnectionstatechange = () => {
         if (pc.connectionState === "failed") {
           pc.restartIce?.();
+        } else if (pc.connectionState === "closed") {
+          closePeerRef.current(socketId);
         }
       };
 
@@ -298,7 +327,9 @@ export function useWebRTC(
 
       peersRef.current[socketId] = pc;
       refreshPeerState();
-      void syncTracksToPeer(pc);
+      void syncTracksToPeer(pc).catch((error) => {
+        if (!isPeerClosed(pc)) console.warn("Cannot attach local tracks", error);
+      });
       return pc;
     },
     [ensureTransceivers, refreshPeerState, refreshRemoteStreams, syncTracksToPeer]
@@ -489,6 +520,9 @@ export function useWebRTC(
   const startScreenShare = useCallback(async () => {
     try {
       setMediaError(null);
+      if (!navigator.mediaDevices?.getDisplayMedia) {
+        throw new Error("Trinh duyet nay khong ho tro chia se man hinh. Hay dung may tinh hoac app.");
+      }
       const stream = await navigator.mediaDevices.getDisplayMedia({
         video: { frameRate: { ideal: 30 } },
         audio: false,
@@ -597,6 +631,10 @@ export function useWebRTC(
     () => participants.filter((participant) => participant.socketId !== selfSocketId),
     [participants, selfSocketId]
   );
+
+  useEffect(() => {
+    setCanShareScreen(Boolean(navigator.mediaDevices?.getDisplayMedia));
+  }, []);
 
   useEffect(() => {
     if (localVideoRef.current) {
@@ -803,6 +841,7 @@ export function useWebRTC(
     setCameraEnabled,
     toggleCamera,
     isScreenSharing,
+    canShareScreen,
     startScreenShare,
     stopScreenShare,
     toggleScreenShare,

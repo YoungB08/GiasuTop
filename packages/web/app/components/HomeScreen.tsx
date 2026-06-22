@@ -40,6 +40,18 @@ function normalizeDocFilterParam(value: string) {
   return value === ALL_FILTER ? "all" : value;
 }
 
+function isMobileBrowser() {
+  if (typeof window === "undefined") return false;
+  const ua = navigator.userAgent || "";
+  const touchMobile = navigator.maxTouchPoints > 1 && window.innerWidth < 900;
+  return /Android|iPhone|iPad|iPod|Mobile/i.test(ua) || touchMobile;
+}
+
+function isStandaloneApp() {
+  if (typeof window === "undefined") return false;
+  return window.matchMedia("(display-mode: standalone)").matches || Boolean((navigator as any).standalone);
+}
+
 type Tutor = {
   user_id: string;
   full_name: string;
@@ -367,6 +379,7 @@ export default function HomeScreen() {
   // Banned state
   const [isBanned, setIsBanned] = useState(false);
   const [showInstallPrompt, setShowInstallPrompt] = useState(false);
+  const [mobileAppRequired, setMobileAppRequired] = useState(false);
 
   // Long term scheduling states
   const [tutorBookingType, setTutorBookingType] = useState<"SINGLE" | "LONG_TERM">("SINGLE");
@@ -730,11 +743,14 @@ export default function HomeScreen() {
   // iOS Add to Home Screen Prompt & welcome notification
   useEffect(() => {
     if (typeof window !== "undefined") {
+      const blockMobile = isMobileBrowser() && !isStandaloneApp();
+      setMobileAppRequired(blockMobile);
+      if (blockMobile) return;
+
       const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
         (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
-      const isStandalone = window.matchMedia('(display-mode: standalone)').matches
-        || (navigator as any).standalone;
+      const isStandalone = isStandaloneApp();
 
       if (isIOS && !isStandalone) {
         // Show the prompt after a short delay (2.5s)
@@ -2862,7 +2878,7 @@ export default function HomeScreen() {
                 </button>
 
                 {notificationMenuOpen && (
-                  <div className="absolute right-0 top-11 w-80 max-w-[calc(100vw-1rem)] bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl overflow-hidden z-50 text-slate-800 dark:text-slate-100">
+                  <div className="fixed left-3 right-3 top-16 max-h-[calc(100dvh-5rem)] overflow-hidden bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl z-50 text-slate-800 dark:text-slate-100 md:absolute md:left-auto md:right-0 md:top-11 md:w-80 md:max-h-none">
                     <div className="p-3 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
                       <div>
                         <div className="text-sm font-bold">Thông báo</div>
@@ -2876,7 +2892,7 @@ export default function HomeScreen() {
                         Đọc hết
                       </button>
                     </div>
-                    <div className="max-h-96 overflow-y-auto">
+                    <div className="max-h-[60dvh] overflow-y-auto md:max-h-96">
                       {notifications.length === 0 ? (
                         <div className="p-5 text-center text-xs text-slate-400">Chưa có thông báo.</div>
                       ) : (
@@ -4466,6 +4482,8 @@ export default function HomeScreen() {
         }}
       />
 
+      {mobileAppRequired && <MobileAppRequired />}
+
       <UploadDocModal
         uploadModalOpen={uploadModalOpen}
         setUploadModalOpen={setUploadModalOpen}
@@ -5028,6 +5046,65 @@ export default function HomeScreen() {
         </div>
       )}
 
+    </div>
+  );
+}
+
+function MobileAppRequired() {
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center overflow-y-auto bg-slate-950 px-4 py-6 text-slate-900">
+      <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl">
+        <div className="bg-[#13519c] px-5 py-4 text-white">
+          <div className="flex items-center gap-3">
+            <img src="/logo.jpg" alt="GiaSuTop" className="h-10 w-10 rounded-xl bg-white object-cover" />
+            <div className="min-w-0">
+              <div className="text-base font-black leading-tight">Bat buoc dung app tren dien thoai</div>
+              <div className="mt-1 text-xs text-white/75">Phong hoc can app de mic, camera va am thanh on dinh.</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="p-5">
+          <img
+            src="/mobile-install-guide.svg"
+            alt="Huong dan tai app GiaSuTop"
+            className="mb-4 aspect-[3/2] w-full rounded-xl border border-slate-200 bg-slate-50 object-cover"
+          />
+
+          <div className="space-y-3 text-sm leading-relaxed text-slate-700">
+            <p className="font-semibold text-slate-950">Ban dang mo GiaSuTop bang trinh duyet mobile.</p>
+            <p>De vao lop hoc, hay tai app GiaSuTop roi dang nhap lai tai khoan. Ban web mobile se bi khoa de tranh loi share man hinh, mat am thanh hoac khong dong bo camera.</p>
+          </div>
+
+          <div className="mt-5 grid gap-2">
+            <a
+              href="/kntech-mobile.ipa"
+              download
+              className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-[#13519c] px-4 text-sm font-black text-white shadow hover:bg-blue-800"
+            >
+              <IconDownload className="h-4 w-4" />
+              Tai app iOS
+            </a>
+            <a
+              href="https://zalo.me/0971920024"
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-200 px-4 text-sm font-bold text-slate-700 hover:bg-slate-50"
+            >
+              Nhan app Android qua Zalo
+            </a>
+          </div>
+
+          <div className="mt-5 rounded-xl bg-slate-50 p-4 text-xs leading-relaxed text-slate-600">
+            <div className="font-black text-slate-900">Cach cai nhanh</div>
+            <ol className="mt-2 list-decimal space-y-1 pl-4">
+              <li>Bam nut tai app phu hop voi may.</li>
+              <li>Mo file vua tai va xac nhan cai dat.</li>
+              <li>Mo app GiaSuTop, dang nhap va vao lai lich hoc.</li>
+            </ol>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

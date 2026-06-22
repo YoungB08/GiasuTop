@@ -91,6 +91,7 @@ export default function ClassroomView({ activeClassroom, setActiveClassroom, cur
     isCamOn,
     toggleCamera,
     isScreenSharing,
+    canShareScreen,
     toggleScreenShare,
     isHandRaised,
     toggleHand,
@@ -452,30 +453,44 @@ export default function ClassroomView({ activeClassroom, setActiveClassroom, cur
           )}
         </section>
 
-        <footer className="flex min-h-[76px] shrink-0 items-center justify-between gap-2 border-t border-white/10 bg-neutral-900 px-2 py-2 sm:px-5">
-          <div className="flex items-center gap-1 sm:gap-2">
-            <ControlButton active={isMicOn} danger={!isMicOn} label={isMicOn ? "Mute" : "Unmute"} onClick={toggleMic}>
+        <footer className="shrink-0 border-t border-white/10 bg-neutral-900 px-2 py-2 sm:px-5">
+          <div className="grid w-full grid-cols-4 gap-1 lg:flex lg:items-center lg:justify-center lg:gap-2">
+            <ControlButton active={isMicOn} danger={!isMicOn} label={isMicOn ? "Mic" : "Mute"} onClick={toggleMic}>
               {isMicOn ? <Mic size={20} /> : <MicOff size={20} />}
             </ControlButton>
-            <ControlButton active={isCamOn} danger={!isCamOn} label={isCamOn ? "Stop" : "Start"} onClick={toggleCamera}>
+            <ControlButton active={isCamOn} danger={!isCamOn} label={isCamOn ? "Cam" : "No cam"} onClick={toggleCamera}>
               {isCamOn ? <Video size={20} /> : <VideoOff size={20} />}
             </ControlButton>
-          </div>
-
-          <div className="flex min-w-0 items-center justify-center gap-1 sm:gap-2">
-            <ControlButton active={sidePanel === "participants"} label={`People ${participantCount}`} onClick={() => setSidePanel(sidePanel === "participants" ? null : "participants")}>
+            <ControlButton active={sidePanel === "participants"} label={`Users ${participantCount}`} onClick={() => setSidePanel(sidePanel === "participants" ? null : "participants")}>
               <Users size={20} />
             </ControlButton>
             <ControlButton active={sidePanel === "chat"} label="Chat" onClick={() => setSidePanel(sidePanel === "chat" ? null : "chat")}>
               <MessageSquare size={20} />
             </ControlButton>
-            <ControlButton active={isScreenSharing} success label={isScreenSharing ? "Stop share" : "Share"} onClick={toggleScreenShare}>
+            <ControlButton
+              active={isScreenSharing}
+              success
+              disabled={!canShareScreen}
+              label={isScreenSharing ? "Stop" : "Share"}
+              onClick={toggleScreenShare}
+            >
               {isScreenSharing ? <ScreenShareOff size={20} /> : <ScreenShare size={20} />}
             </ControlButton>
             <ControlButton active={isHandRaised} label="Raise" onClick={toggleHand}>
               <Hand size={20} />
             </ControlButton>
-            <div className="hidden items-center gap-1 md:flex">
+            <ControlButton active={sidePanel === "settings"} label="Device" onClick={() => setSidePanel(sidePanel === "settings" ? null : "settings")}>
+              <Settings size={20} />
+            </ControlButton>
+            <button
+              type="button"
+              onClick={handleLeaveRoom}
+              className="flex h-14 w-full shrink-0 flex-col items-center justify-center gap-1 rounded-lg bg-red-600 px-2 text-[10px] font-bold text-white transition hover:bg-red-700 lg:w-20"
+            >
+              <PhoneOff size={18} />
+              <span className="max-w-full truncate px-1">Leave</span>
+            </button>
+            <div className="hidden items-center gap-1 xl:flex">
               {REACTIONS.map((reaction) => (
                 <button
                   key={reaction}
@@ -487,19 +502,7 @@ export default function ClassroomView({ activeClassroom, setActiveClassroom, cur
                 </button>
               ))}
             </div>
-            <ControlButton active={sidePanel === "settings"} label="Device" onClick={() => setSidePanel(sidePanel === "settings" ? null : "settings")}>
-              <Settings size={20} />
-            </ControlButton>
           </div>
-
-          <button
-            type="button"
-            onClick={handleLeaveRoom}
-            className="inline-flex h-11 shrink-0 items-center gap-2 rounded-lg bg-red-600 px-3 text-xs font-bold text-white hover:bg-red-700 sm:px-5"
-          >
-            <PhoneOff size={18} />
-            <span className="hidden sm:inline">Leave</span>
-          </button>
         </footer>
       </main>
 
@@ -603,6 +606,7 @@ function ControlButton({
   active,
   danger,
   success,
+  disabled,
   label,
   onClick,
   children,
@@ -610,6 +614,7 @@ function ControlButton({
   active?: boolean;
   danger?: boolean;
   success?: boolean;
+  disabled?: boolean;
   label: string;
   onClick: () => void;
   children: React.ReactNode;
@@ -618,9 +623,11 @@ function ControlButton({
     <button
       type="button"
       title={label}
+      disabled={disabled}
       onClick={onClick}
       className={cx(
-        "flex h-14 w-[58px] shrink-0 flex-col items-center justify-center gap-1 rounded-lg text-[10px] font-semibold transition hover:bg-white/10 sm:w-20",
+        "flex h-14 w-full shrink-0 flex-col items-center justify-center gap-1 rounded-lg text-[10px] font-semibold transition hover:bg-white/10 lg:w-20",
+        disabled && "cursor-not-allowed opacity-40 hover:bg-transparent",
         danger && "text-red-400",
         success && active && "bg-emerald-500/10 text-emerald-300",
         active && !danger && !success && "text-orange-300"
@@ -722,15 +729,48 @@ function RemoteVideo({ stream }: { stream: MediaStream }) {
 
 function RemoteAudio({ stream }: { stream: MediaStream }) {
   const audioRef = useRef<HTMLAudioElement>(null);
+  const [blocked, setBlocked] = useState(false);
 
   useEffect(() => {
-    if (audioRef.current) {
-      audioRef.current.srcObject = stream;
-      void audioRef.current.play().catch(() => {});
-    }
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    const playAudio = () => {
+      audio.srcObject = stream;
+      void audio
+        .play()
+        .then(() => setBlocked(false))
+        .catch(() => setBlocked(true));
+    };
+
+    playAudio();
+    window.addEventListener("pointerdown", playAudio);
+    window.addEventListener("keydown", playAudio);
+    return () => {
+      window.removeEventListener("pointerdown", playAudio);
+      window.removeEventListener("keydown", playAudio);
+    };
   }, [stream]);
 
-  return <audio ref={audioRef} autoPlay playsInline className="hidden" />;
+  return (
+    <>
+      <audio ref={audioRef} autoPlay playsInline className="hidden" />
+      {blocked && (
+        <button
+          type="button"
+          onClick={() => {
+            const audio = audioRef.current;
+            if (!audio) return;
+            audio.srcObject = stream;
+            void audio.play().then(() => setBlocked(false)).catch(() => setBlocked(true));
+          }}
+          className="absolute right-3 top-3 rounded-md border border-amber-300/25 bg-amber-500/15 px-2 py-1 text-[10px] font-bold text-amber-100 backdrop-blur hover:bg-amber-500/25"
+        >
+          Bat am thanh
+        </button>
+      )}
+    </>
+  );
 }
 
 function Badge({ children, tone = "neutral" }: { children: React.ReactNode; tone?: "neutral" | "green" | "amber" }) {
