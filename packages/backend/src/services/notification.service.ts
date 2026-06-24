@@ -13,6 +13,7 @@ export type NotificationType =
   | "BOOKING_CREATED"
   | "BOOKING_CONFIRMED"
   | "CLASS_COMPLETED"
+  | "CLASSROOM_EVENT"
   | "PAYMENT_PAID"
   | "PAYMENT_RELEASED"
   | "WALLET_TOPUP"

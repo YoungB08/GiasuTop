@@ -1,5 +1,7 @@
 import { Server as HttpServer } from "http";
 import { Server, Socket } from "socket.io";
+import { createNotifications } from "./services/notification.service";
+import { logActivity } from "./utils/logger";
 
 type RoomParticipantState = {
   socketId: string;
@@ -91,6 +93,40 @@ function sanitizeParticipantPatch(payload: any) {
   };
 }
 
+function uniqueUserIds(participants: RoomParticipantState[], excludeUserId?: string) {
+  return Array.from(new Set(participants.map((participant) => participant.userId).filter((userId) => userId && userId !== excludeUserId)));
+}
+
+function notifyRoomUsers(
+  roomId: string,
+  actor: RoomParticipantState | undefined,
+  title: string,
+  body: string,
+  metadata?: Record<string, unknown>
+) {
+  const recipients = uniqueUserIds(getParticipants(roomId), actor?.userId);
+  if (recipients.length === 0) return;
+
+  createNotifications(
+    recipients.map((recipientId) => ({
+      recipientId,
+      actorId: actor?.userId || null,
+      type: "CLASSROOM_EVENT",
+      title,
+      body,
+      linkUrl: "/bookings",
+      entityType: "classroom",
+      entityId: roomId,
+      metadata: {
+        roomId,
+        actorSocketId: actor?.socketId,
+        actorName: actor?.userName,
+        ...metadata,
+      },
+    }))
+  ).catch((error) => console.error("Failed to create classroom notifications:", error?.message || error));
+}
+
 export function setupSocket(httpServer: HttpServer, corsOrigins: string[]) {
   const io = new Server(httpServer, {
     cors: {
@@ -120,6 +156,24 @@ export function setupSocket(httpServer: HttpServer, corsOrigins: string[]) {
     participants.set(socket.id, next);
     io.to(roomId).emit("participant-updated", next);
     publishParticipants(roomId);
+    logActivity(next.userId, "CLASSROOM_MEDIA_STATE", JSON.stringify({ roomId, patch }), null).catch(() => {});
+
+    const changedLabels: string[] = [];
+    if (typeof patch.isMicOn === "boolean" && patch.isMicOn !== participant.isMicOn) {
+      changedLabels.push(patch.isMicOn ? "đã bật micro" : "đã tắt micro");
+    }
+    if (typeof patch.isCamOn === "boolean" && patch.isCamOn !== participant.isCamOn) {
+      changedLabels.push(patch.isCamOn ? "đã bật camera" : "đã tắt camera");
+    }
+    if (typeof patch.isScreenSharing === "boolean" && patch.isScreenSharing !== participant.isScreenSharing) {
+      changedLabels.push(patch.isScreenSharing ? "đang chia sẻ màn hình" : "đã dừng chia sẻ màn hình");
+    }
+    if (typeof patch.isHandRaised === "boolean" && patch.isHandRaised !== participant.isHandRaised) {
+      changedLabels.push(patch.isHandRaised ? "đã giơ tay" : "đã hạ tay");
+    }
+    if (changedLabels.length > 0) {
+      notifyRoomUsers(roomId, next, "Cập nhật phòng học", `${next.userName} ${changedLabels.join(", ")}.`, { patch });
+    }
   };
 
   const leaveRoom = (socket: Socket, reason = "leave") => {
@@ -156,7 +210,7 @@ export function setupSocket(httpServer: HttpServer, corsOrigins: string[]) {
     socket.on("join-room", (...args: any[]) => {
       const payload = normalizeJoinPayload(args);
       if (!payload?.roomId || !payload.userId) {
-        socket.emit("room-error", { message: "Thong tin phong hoc khong hop le." });
+        socket.emit("room-error", { message: "Thông tin phòng học không hợp lệ." });
         return;
       }
 
@@ -193,6 +247,8 @@ export function setupSocket(httpServer: HttpServer, corsOrigins: string[]) {
       publishParticipants(payload.roomId);
 
       console.log(`User ${payload.userId} (${participant.userName}) joined room: ${payload.roomId}`);
+      logActivity(participant.userId, "CLASSROOM_JOIN", JSON.stringify({ roomId: payload.roomId, socketId: socket.id, role: participant.role }), null).catch(() => {});
+      notifyRoomUsers(payload.roomId, participant, "Có người vào lớp", `${participant.userName} vừa vào phòng học.`, { event: "join" });
     });
 
     socket.on("offer", (payload) => {
@@ -238,6 +294,9 @@ export function setupSocket(httpServer: HttpServer, corsOrigins: string[]) {
         time: new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }),
         createdAt: new Date().toISOString(),
       });
+      logActivity(String(socket.data.userId || ""), "CLASSROOM_CHAT", JSON.stringify({ roomId, length: text.length }), null).catch(() => {});
+      const actor = getRoom(roomId).get(socket.id);
+      notifyRoomUsers(roomId, actor, "Tin nhắn lớp học", `${senderName}: ${text.slice(0, 120)}`, { event: "chat" });
     });
 
     socket.on("reaction", (payload) => {
@@ -306,11 +365,23 @@ export function setupSocket(httpServer: HttpServer, corsOrigins: string[]) {
     });
 
     socket.on("leave-room", () => {
+      const roomId = socket.data.roomId as string | undefined;
+      const participant = roomId ? getRoom(roomId).get(socket.id) : undefined;
+      if (roomId && participant) {
+        logActivity(participant.userId, "CLASSROOM_LEAVE", JSON.stringify({ roomId, socketId: socket.id }), null).catch(() => {});
+        notifyRoomUsers(roomId, participant, "Rời phòng học", `${participant.userName} đã rời phòng học.`, { event: "leave" });
+      }
       leaveRoom(socket, "leave");
     });
 
     socket.on("disconnect", () => {
       console.log(`Socket disconnected: ${socket.id}`);
+      const roomId = socket.data.roomId as string | undefined;
+      const participant = roomId ? getRoom(roomId).get(socket.id) : undefined;
+      if (roomId && participant) {
+        logActivity(participant.userId, "CLASSROOM_DISCONNECT", JSON.stringify({ roomId, socketId: socket.id }), null).catch(() => {});
+        notifyRoomUsers(roomId, participant, "Mất kết nối phòng học", `${participant.userName} đã mất kết nối.`, { event: "disconnect" });
+      }
       leaveRoom(socket, "disconnect");
     });
   });

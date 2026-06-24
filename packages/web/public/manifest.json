@@ -1,27 +1,29 @@
 {
-  "name": "Gia sư Top",
-  "short_name": "Giasutop",
-  "description": "Nền tảng gia sư trực tuyến hàng đầu Việt Nam",
+  "name": "GiaSuTop",
+  "short_name": "GiaSuTop",
+  "description": "Nền tảng gia sư trực tuyến GiaSuTop",
+  "id": "/",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#090b11",
   "theme_color": "#13519c",
   "icons": [
     {
-      "src": "https://i.ibb.co/NdgYx2Fy/Gemini-Generated-Image-89azsx89azsx89az.png",
+      "src": "/logo.jpg",
       "sizes": "192x192",
       "type": "image/jpeg",
       "purpose": "any"
     },
     {
-      "src": "https://i.ibb.co/NdgYx2Fy/Gemini-Generated-Image-89azsx89azsx89az.png",
+      "src": "/logo.jpg",
       "sizes": "512x512",
       "type": "image/jpeg",
       "purpose": "any"
     },
     {
-      "src": "https://i.ibb.co/NdgYx2Fy/Gemini-Generated-Image-89azsx89azsx89az.png",
+      "src": "/logo.jpg",
       "sizes": "192x192",
       "type": "image/jpeg",
       "purpose": "maskable"

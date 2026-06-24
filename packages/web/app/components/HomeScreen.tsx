@@ -928,6 +928,13 @@ export default function HomeScreen() {
     setNotificationPermission("Notification" in window ? Notification.permission : "unsupported");
   }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined" || !("serviceWorker" in navigator)) return;
+    navigator.serviceWorker.register("/service-worker.js").catch((error) => {
+      console.error("Lỗi đăng ký Service Worker:", error);
+    });
+  }, []);
+
   const fetchNotifications = async () => {
     if (!token) return;
     try {
@@ -956,10 +963,24 @@ export default function HomeScreen() {
   const showBrowserNotification = (notification: NotificationItem) => {
     if (typeof window === "undefined" || !("Notification" in window)) return;
     if (Notification.permission !== "granted") return;
+    const payload = {
+      title: notification.title,
+      body: notification.body,
+      url: notification.link_url || "/",
+      icon: "/logo.jpg",
+      badge: "/logo.jpg",
+    };
+    if ("serviceWorker" in navigator && navigator.serviceWorker.controller) {
+      navigator.serviceWorker.controller.postMessage({
+        type: "SHOW_NOTIFICATION",
+        notification: payload,
+      });
+      return;
+    }
     const browserNotification = new Notification(notification.title, {
       body: notification.body,
-      icon: "https://api.dicebear.com/7.x/identicon/png?seed=KNTech",
-      badge: "https://api.dicebear.com/7.x/identicon/png?seed=KNTech&width=96&height=96",
+      icon: "/logo.jpg",
+      badge: "/logo.jpg",
       data: { url: notification.link_url || "/" },
     });
     browserNotification.onclick = () => {
@@ -1065,6 +1086,25 @@ export default function HomeScreen() {
     return () => {
       stream.close();
       clearInterval(interval);
+    };
+  }, [token]);
+
+  useEffect(() => {
+    if (!token) return;
+    const onOnline = () => logClientActivity("CLIENT_ONLINE", "Thiết bị đã online");
+    const onOffline = () => logClientActivity("CLIENT_OFFLINE", "Thiết bị đã offline");
+    const onVisibility = () => {
+      logClientActivity(document.visibilityState === "visible" ? "CLIENT_VISIBLE" : "CLIENT_HIDDEN", `Trạng thái tab: ${document.visibilityState}`);
+    };
+
+    window.addEventListener("online", onOnline);
+    window.addEventListener("offline", onOffline);
+    document.addEventListener("visibilitychange", onVisibility);
+    logClientActivity("CLIENT_SESSION_ACTIVE", `Mở ứng dụng bằng ${navigator.userAgent}`);
+    return () => {
+      window.removeEventListener("online", onOnline);
+      window.removeEventListener("offline", onOffline);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [token]);
 
@@ -1796,6 +1836,7 @@ export default function HomeScreen() {
   // Virtual Classroom logic
   const handleJoinClassroom = (appt: Appointment) => {
     setActiveClassroom(appt);
+    logClientActivity("CLASSROOM_OPEN", `Mở phòng học trực tuyến lớp ${appt.id}`);
     setChatMessages([
       {
         sender: "Hệ thống",
@@ -4471,9 +4512,10 @@ export default function HomeScreen() {
         setActiveClassroom={setActiveClassroom}
         currentUser={{
           id: user?.id || "guest",
-          name: user?.fullName || "Khach",
+          name: user?.fullName || "Khách",
           role: (user?.role as "STUDENT" | "TUTOR" | "ADMIN" | "GUEST" | undefined) || "GUEST",
         }}
+        logClientActivity={logClientActivity}
       />
 
       {mobileAppRequired && <MobileAppRequired />}

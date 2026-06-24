@@ -10,6 +10,11 @@ const plusJakarta = Plus_Jakarta_Sans({
 export const metadata: Metadata = {
   title: "GiaSu-KNTech - Tìm gia sư giỏi cho con",
   description: "Hệ thống tìm gia sư trực tuyến chất lượng cao",
+  manifest: "/manifest.json",
+  icons: {
+    icon: "/logo.jpg",
+    apple: "/logo.jpg",
+  },
 };
 
 export default function RootLayout({
@@ -27,8 +32,8 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-        <meta name="apple-mobile-web-app-title" content="KNTech" />
-        <link rel="apple-touch-icon" href="https://i.ibb.co/NdgYx2Fy/Gemini-Generated-Image-89azsx89azsx89az.png" />
+        <meta name="apple-mobile-web-app-title" content="GiaSuTop" />
+        <link rel="apple-touch-icon" href="/logo.jpg" />
         <link rel="manifest" href="/manifest.json" />
         <meta name="theme-color" content="#13519c" />
         <link

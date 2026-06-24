@@ -385,6 +385,21 @@ export function useWebRTC(
   );
   sendOfferRef.current = sendOffer;
 
+  const renegotiatePeers = useCallback(async () => {
+    const peerSocketIds = Object.keys(peersRef.current);
+    await Promise.all(
+      peerSocketIds.map(async (peerSocketId) => {
+        const pc = peersRef.current[peerSocketId];
+        if (!pc || isPeerClosed(pc) || pc.signalingState !== "stable") return;
+        try {
+          await sendOfferRef.current(peerSocketId);
+        } catch (error) {
+          console.warn("Cannot renegotiate WebRTC peer", error);
+        }
+      })
+    );
+  }, []);
+
   const ensureParticipantPeers = useCallback(
     (nextParticipants: RoomParticipant[], currentSocket = socketRef.current) => {
       const selfId = currentSocket?.id || socketRef.current?.id || selfSocketId;
@@ -466,6 +481,7 @@ export function useWebRTC(
           setIsMicOn(false);
         }
         await syncTracksToAllPeers();
+        await renegotiatePeers();
         publishMediaState({ isMicOn: enabled });
       } catch (error) {
         setMediaError(error instanceof Error ? error.message : "Không thể bật micro.");
@@ -474,7 +490,7 @@ export function useWebRTC(
         publishMediaState({ isMicOn: false });
       }
     },
-    [ensureAudioTrack, publishMediaState, refreshDevices, stopTracks, syncTracksToAllPeers]
+    [ensureAudioTrack, publishMediaState, refreshDevices, renegotiatePeers, stopTracks, syncTracksToAllPeers]
   );
   setMicrophoneEnabledRef.current = setMicrophoneEnabled;
 
@@ -495,6 +511,7 @@ export function useWebRTC(
           if (!isScreenSharingRef.current) setLocalPreviewStream(null);
         }
         await syncTracksToAllPeers();
+        await renegotiatePeers();
         publishMediaState({ isCamOn: enabled });
       } catch (error) {
         setMediaError(error instanceof Error ? error.message : "Không thể bật camera.");
@@ -504,7 +521,7 @@ export function useWebRTC(
         publishMediaState({ isCamOn: false });
       }
     },
-    [ensureVideoTrack, publishMediaState, refreshDevices, stopTracks, syncTracksToAllPeers]
+    [ensureVideoTrack, publishMediaState, refreshDevices, renegotiatePeers, stopTracks, syncTracksToAllPeers]
   );
 
   const stopScreenShare = useCallback(async () => {
@@ -514,8 +531,9 @@ export function useWebRTC(
     setIsScreenSharing(false);
     setLocalPreviewStream(isCamOnRef.current ? localStreamRef.current : null);
     await syncTracksToAllPeers();
+    await renegotiatePeers();
     publishMediaState({ isScreenSharing: false });
-  }, [publishMediaState, stopTracks, syncTracksToAllPeers]);
+  }, [publishMediaState, renegotiatePeers, stopTracks, syncTracksToAllPeers]);
 
   const startScreenShare = useCallback(async () => {
     try {
@@ -539,6 +557,7 @@ export function useWebRTC(
       setIsScreenSharing(true);
       setLocalPreviewStream(stream);
       await syncTracksToAllPeers();
+      await renegotiatePeers();
       publishMediaState({ isScreenSharing: true });
     } catch (error) {
       setMediaError(error instanceof Error ? error.message : "Không thể chia sẻ màn hình.");
@@ -546,7 +565,7 @@ export function useWebRTC(
       setIsScreenSharing(false);
       publishMediaState({ isScreenSharing: false });
     }
-  }, [publishMediaState, stopScreenShare, syncTracksToAllPeers]);
+  }, [publishMediaState, renegotiatePeers, stopScreenShare, syncTracksToAllPeers]);
 
   const toggleMic = useCallback(() => setMicrophoneEnabled(!isMicOnRef.current), [setMicrophoneEnabled]);
   const toggleCamera = useCallback(() => setCameraEnabled(!isCamOnRef.current), [setCameraEnabled]);

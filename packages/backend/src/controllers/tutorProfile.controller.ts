@@ -192,8 +192,8 @@ export async function upsertMyTutorProfile(req: AuthedRequest, res: Response): P
     await notifyAdmins({
       actorId: req.user!.id,
       type: "SYSTEM",
-      title: "Gia sÆ° Ä‘Æ°á»£c eKYC tá»± Ä‘á»™ng duyá»‡t",
-      body: `${req.user!.email} Ä‘áº¡t eKYC ${Number(profile.ekyc_score || 0)}% vÃ  Ä‘Ã£ hoÃ n táº¥t há»“ sÆ¡ dáº¡y há»c.`,
+      title: "Gia sư được eKYC tự động duyệt",
+      body: `${req.user!.email} đạt eKYC ${Number(profile.ekyc_score || 0)}% và đã hoàn tất hồ sơ dạy học.`,
       linkUrl: "/?tab=admin&tutors=1",
       entityType: "TUTOR_PROFILE",
       entityId: req.user!.id,

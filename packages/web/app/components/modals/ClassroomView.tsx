@@ -34,6 +34,7 @@ type ClassroomViewProps = {
     name: string;
     role?: "STUDENT" | "TUTOR" | "ADMIN" | "GUEST";
   };
+  logClientActivity?: (action: string, details: string) => void;
 };
 
 type SidePanel = "chat" | "participants" | "settings" | null;
@@ -63,7 +64,7 @@ function getClassroomId(activeClassroom: any) {
   return String(activeClassroom?.class_id || activeClassroom?.live_room_code || activeClassroom?.id || "preview-room");
 }
 
-export default function ClassroomView({ activeClassroom, setActiveClassroom, currentUser }: ClassroomViewProps) {
+export default function ClassroomView({ activeClassroom, setActiveClassroom, currentUser, logClientActivity }: ClassroomViewProps) {
   const [sidePanel, setSidePanel] = useState<SidePanel>(null);
   const [roomView, setRoomView] = useState<RoomView>("gallery");
   const [chatInput, setChatInput] = useState("");
@@ -172,6 +173,8 @@ export default function ClassroomView({ activeClassroom, setActiveClassroom, cur
   const spotlightTile = allTiles.find((tile) => tile.id === spotlightId) || allTiles[0];
   const companionTiles = allTiles.filter((tile) => tile.id !== spotlightTile?.id);
   const counterpartName = getCounterpartName(activeClassroom, currentUser.role);
+  const hasScreenShare = Boolean(spotlightTile?.participant.isScreenSharing);
+  const effectiveRoomView = roomView === "whiteboard" ? "whiteboard" : hasScreenShare ? "speaker" : roomView;
 
   useEffect(() => {
     if (!socket) return;
@@ -267,10 +270,12 @@ export default function ClassroomView({ activeClassroom, setActiveClassroom, cur
   const handleSendMessage = (event: React.FormEvent) => {
     event.preventDefault();
     sendChatMessage(chatInput);
+    if (chatInput.trim()) logClientActivity?.("CLASSROOM_CHAT_SEND", `Gửi tin nhắn trong lớp ${classroomId}`);
     setChatInput("");
   };
 
   const handleLeaveRoom = () => {
+    logClientActivity?.("CLASSROOM_LEAVE", `Rời phòng học ${classroomId}`);
     leaveRoom();
     setActiveClassroom(null);
   };
@@ -364,7 +369,7 @@ export default function ClassroomView({ activeClassroom, setActiveClassroom, cur
             </div>
           )}
 
-          {roomView === "whiteboard" ? (
+          {effectiveRoomView === "whiteboard" ? (
             <div className="flex h-full flex-col overflow-hidden rounded-lg border border-white/10 bg-neutral-100">
               <div className="flex h-12 shrink-0 items-center justify-between border-b border-neutral-200 bg-white px-3 text-neutral-900">
                 <div className="flex items-center gap-2">
@@ -408,7 +413,7 @@ export default function ClassroomView({ activeClassroom, setActiveClassroom, cur
                 className="h-full w-full touch-none bg-white"
               />
             </div>
-          ) : roomView === "speaker" && spotlightTile ? (
+          ) : effectiveRoomView === "speaker" && spotlightTile ? (
             <div className="grid h-full grid-rows-[1fr_112px] gap-3">
               <VideoTile
                 tile={spotlightTile}
@@ -455,10 +460,26 @@ export default function ClassroomView({ activeClassroom, setActiveClassroom, cur
 
         <footer className="shrink-0 border-t border-white/10 bg-neutral-900 px-2 py-2 sm:px-5">
           <div className="grid w-full grid-cols-4 gap-1 lg:flex lg:items-center lg:justify-center lg:gap-2">
-            <ControlButton active={isMicOn} danger={!isMicOn} label={isMicOn ? "Mic" : "Tắt mic"} onClick={toggleMic}>
+            <ControlButton
+              active={isMicOn}
+              danger={!isMicOn}
+              label={isMicOn ? "Mic" : "Tắt mic"}
+              onClick={() => {
+                logClientActivity?.("CLASSROOM_TOGGLE_MIC", `${isMicOn ? "Tắt" : "Bật"} micro trong lớp ${classroomId}`);
+                toggleMic();
+              }}
+            >
               {isMicOn ? <Mic size={20} /> : <MicOff size={20} />}
             </ControlButton>
-            <ControlButton active={isCamOn} danger={!isCamOn} label={isCamOn ? "Cam" : "Tắt cam"} onClick={toggleCamera}>
+            <ControlButton
+              active={isCamOn}
+              danger={!isCamOn}
+              label={isCamOn ? "Cam" : "Tắt cam"}
+              onClick={() => {
+                logClientActivity?.("CLASSROOM_TOGGLE_CAMERA", `${isCamOn ? "Tắt" : "Bật"} camera trong lớp ${classroomId}`);
+                toggleCamera();
+              }}
+            >
               {isCamOn ? <Video size={20} /> : <VideoOff size={20} />}
             </ControlButton>
             <ControlButton active={sidePanel === "participants"} label={`Người ${participantCount}`} onClick={() => setSidePanel(sidePanel === "participants" ? null : "participants")}>
@@ -472,11 +493,22 @@ export default function ClassroomView({ activeClassroom, setActiveClassroom, cur
               success
               disabled={!canShareScreen}
               label={isScreenSharing ? "Dừng" : "Chia sẻ"}
-              onClick={toggleScreenShare}
+              onClick={() => {
+                logClientActivity?.("CLASSROOM_TOGGLE_SCREEN_SHARE", `${isScreenSharing ? "Dừng" : "Bắt đầu"} chia sẻ màn hình lớp ${classroomId}`);
+                toggleScreenShare();
+                if (!isScreenSharing) setRoomView("speaker");
+              }}
             >
               {isScreenSharing ? <ScreenShareOff size={20} /> : <ScreenShare size={20} />}
             </ControlButton>
-            <ControlButton active={isHandRaised} label="Giơ tay" onClick={toggleHand}>
+            <ControlButton
+              active={isHandRaised}
+              label="Giơ tay"
+              onClick={() => {
+                logClientActivity?.("CLASSROOM_RAISE_HAND", `${isHandRaised ? "Hạ tay" : "Giơ tay"} trong lớp ${classroomId}`);
+                toggleHand();
+              }}
+            >
               <Hand size={20} />
             </ControlButton>
             <ControlButton active={sidePanel === "settings"} label="Thiết bị" onClick={() => setSidePanel(sidePanel === "settings" ? null : "settings")}>
@@ -734,9 +766,13 @@ function RemoteAudio({ stream }: { stream: MediaStream }) {
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
+    audio.muted = false;
+    audio.volume = 1;
 
     const playAudio = () => {
       audio.srcObject = stream;
+      audio.muted = false;
+      audio.volume = 1;
       void audio
         .play()
         .then(() => setBlocked(false))
@@ -762,6 +798,8 @@ function RemoteAudio({ stream }: { stream: MediaStream }) {
             const audio = audioRef.current;
             if (!audio) return;
             audio.srcObject = stream;
+            audio.muted = false;
+            audio.volume = 1;
             void audio.play().then(() => setBlocked(false)).catch(() => setBlocked(true));
           }}
           className="absolute right-3 top-3 rounded-md border border-amber-300/25 bg-amber-500/15 px-2 py-1 text-[10px] font-bold text-amber-100 backdrop-blur hover:bg-amber-500/25"
