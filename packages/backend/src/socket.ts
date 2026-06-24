@@ -1,7 +1,15 @@
 import { Server as HttpServer } from "http";
 import { Server, Socket } from "socket.io";
+import pool from "./config/db";
 import { createNotifications } from "./services/notification.service";
 import { logActivity } from "./utils/logger";
+import { verifyAccessToken } from "./utils/jwt";
+
+type SocketAuthUser = {
+  id: string;
+  email: string;
+  role: "STUDENT" | "TUTOR" | "ADMIN";
+};
 
 type RoomParticipantState = {
   socketId: string;
@@ -68,7 +76,7 @@ function normalizeJoinPayload(args: any[]): JoinRoomPayload | null {
     return {
       roomId: String(first.roomId || "").trim(),
       userId: String(first.userId || "").trim(),
-      userName: String(first.userName || first.name || "Khach").trim(),
+      userName: String(first.userName || first.name || "Khách").trim(),
       role: first.role || "GUEST",
       state: first.state || {},
     };
@@ -78,7 +86,7 @@ function normalizeJoinPayload(args: any[]): JoinRoomPayload | null {
   return {
     roomId: String(roomId || "").trim(),
     userId: String(userId || "").trim(),
-    userName: String(userName || "Khach").trim(),
+    userName: String(userName || "Khách").trim(),
     role: "GUEST",
     state: {},
   };
@@ -91,6 +99,33 @@ function sanitizeParticipantPatch(payload: any) {
     isScreenSharing: Boolean(payload?.isScreenSharing),
     isHandRaised: Boolean(payload?.isHandRaised),
   };
+}
+
+function getHandshakeToken(socket: Socket) {
+  const authToken = socket.handshake.auth?.token;
+  if (typeof authToken === "string" && authToken.trim()) return authToken.trim();
+
+  const queryToken = socket.handshake.query?.token;
+  if (typeof queryToken === "string" && queryToken.trim()) return queryToken.trim();
+
+  const header = socket.handshake.headers.authorization;
+  if (header?.startsWith("Bearer ")) return header.slice("Bearer ".length).trim();
+  return "";
+}
+
+async function canJoinClassroom(user: SocketAuthUser, roomId: string) {
+  if (user.role === "ADMIN") return true;
+
+  const [rows]: any = await pool.query(
+    `SELECT id
+     FROM appointments
+     WHERE (id = ? OR live_room_code = ?)
+       AND (student_id = ? OR tutor_id = ?)
+     LIMIT 1`,
+    [roomId, roomId, user.id, user.id]
+  );
+
+  return rows.length > 0;
 }
 
 function uniqueUserIds(participants: RoomParticipantState[], excludeUserId?: string) {
@@ -207,10 +242,44 @@ export function setupSocket(httpServer: HttpServer, corsOrigins: string[]) {
   io.on("connection", (socket: Socket) => {
     console.log(`Socket connected: ${socket.id}`);
 
-    socket.on("join-room", (...args: any[]) => {
+    const token = getHandshakeToken(socket);
+    if (token) {
+      try {
+        const payload = verifyAccessToken(token);
+        socket.data.authUser = {
+          id: payload.sub,
+          email: payload.email,
+          role: payload.role,
+        } satisfies SocketAuthUser;
+      } catch {
+        socket.emit("room-error", { message: "Phiên đăng nhập không hợp lệ. Vui lòng đăng nhập lại." });
+        socket.disconnect(true);
+        return;
+      }
+    }
+
+    socket.on("join-room", async (...args: any[]) => {
       const payload = normalizeJoinPayload(args);
-      if (!payload?.roomId || !payload.userId) {
+      if (!payload?.roomId) {
         socket.emit("room-error", { message: "Thông tin phòng học không hợp lệ." });
+        return;
+      }
+
+      const authUser = socket.data.authUser as SocketAuthUser | undefined;
+      if (!authUser) {
+        socket.emit("room-error", { message: "Bạn cần đăng nhập để vào phòng học." });
+        return;
+      }
+
+      try {
+        const allowed = await canJoinClassroom(authUser, payload.roomId);
+        if (!allowed) {
+          socket.emit("room-error", { message: "Bạn không có quyền vào phòng học này." });
+          return;
+        }
+      } catch (error) {
+        console.error("Failed to verify classroom access:", error);
+        socket.emit("room-error", { message: "Không thể kiểm tra quyền vào phòng học." });
         return;
       }
 
@@ -220,9 +289,9 @@ export function setupSocket(httpServer: HttpServer, corsOrigins: string[]) {
       const existingParticipants = Array.from(participants.values());
       const participant: RoomParticipantState = {
         socketId: socket.id,
-        userId: payload.userId,
-        userName: payload.userName || "Khach",
-        role: payload.role || "GUEST",
+        userId: authUser.id,
+        userName: payload.userName || authUser.email || "Khách",
+        role: authUser.role,
         joinedAt: new Date().toISOString(),
         isHost: existingParticipants.length === 0,
         isMicOn: Boolean(payload.state?.isMicOn),
@@ -279,7 +348,7 @@ export function setupSocket(httpServer: HttpServer, corsOrigins: string[]) {
 
     socket.on("chat-message", (payload) => {
       const roomId = socket.data.roomId as string | undefined;
-      const senderName = String(socket.data.userName || "Khach");
+      const senderName = String(socket.data.userName || "Khách");
       const text = String(payload?.text || "").trim().slice(0, 4000);
       if (!roomId || !text) return;
 
@@ -304,7 +373,7 @@ export function setupSocket(httpServer: HttpServer, corsOrigins: string[]) {
       if (!roomId) return;
       socket.to(roomId).emit("reaction", {
         senderSocketId: socket.id,
-        senderName: socket.data.userName || "Khach",
+        senderName: socket.data.userName || "Khách",
         reaction: String(payload?.reaction || "").slice(0, 24),
         createdAt: new Date().toISOString(),
       });

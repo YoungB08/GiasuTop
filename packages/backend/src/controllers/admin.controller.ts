@@ -125,10 +125,10 @@ export async function decideWithdraw(req: AuthedRequest, res: Response): Promise
     recipientId: wr.user_id,
     actorId: req.user?.id ?? null,
     type: input.decision === "APPROVED" ? "WITHDRAW_APPROVED" : "WITHDRAW_REJECTED",
-    title: input.decision === "APPROVED" ? "Yeu cau rut tien da duoc duyet" : "Yeu cau rut tien bi tu choi",
+    title: input.decision === "APPROVED" ? "Yêu cầu rút tiền đã được duyệt" : "Yêu cầu rút tiền bị từ chối",
     body: input.decision === "APPROVED"
-      ? `Yeu cau rut ${Number(wr.amount).toLocaleString("vi-VN")}d cua ban da duoc admin duyet.`
-      : `Yeu cau rut tien bi tu choi va tien da duoc hoan ve vi. ${input.adminNote ?? ""}`.trim(),
+      ? `Yêu cầu rút ${Number(wr.amount).toLocaleString("vi-VN")}đ của bạn đã được admin duyệt.`
+      : `Yêu cầu rút tiền bị từ chối và tiền đã được hoàn về ví. ${input.adminNote ?? ""}`.trim(),
     linkUrl: "/?tab=wallet",
     entityType: "WITHDRAW_REQUEST",
     entityId: String(input.withdrawId),

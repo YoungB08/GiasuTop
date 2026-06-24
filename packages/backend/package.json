@@ -7,6 +7,7 @@
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
+    "push:keys": "web-push generate-vapid-keys",
     "migrate": "ts-node src/migrations/add_username_column.ts"
   },
   "keywords": [],
@@ -16,6 +17,7 @@
   "dependencies": {
     "@types/multer": "^2.1.0",
     "@types/uuid": "^10.0.0",
+    "@types/web-push": "^3.6.4",
     "axios": "^1.18.0",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",
@@ -29,6 +31,7 @@
     "sepay-pg-node": "^1.0.0",
     "socket.io": "^4.8.3",
     "uuid": "^14.0.0",
+    "web-push": "^3.6.7",
     "zod": "^4.4.3"
   },
   "devDependencies": {

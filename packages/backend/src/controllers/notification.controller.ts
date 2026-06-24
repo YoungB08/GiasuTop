@@ -5,10 +5,13 @@ import type { AuthedRequest } from "../middlewares/auth";
 import {
   countUnreadNotifications,
   createNotifications,
+  deletePushSubscription,
+  getVapidPublicKey,
   listNotifications,
   markAllNotificationsRead,
   markNotificationRead,
   registerNotificationStream,
+  savePushSubscription,
 } from "../services/notification.service";
 
 const ListNotificationsSchema = z.object({
@@ -37,6 +40,39 @@ export async function getMyUnreadNotificationCount(req: AuthedRequest, res: Resp
 export async function streamMyNotifications(req: AuthedRequest, res: Response): Promise<any> {
   if (!req.user) return res.status(401).json({ success: false, message: "Unauthorized" });
   return registerNotificationStream(req.user.id, res);
+}
+
+export async function getPushConfig(_req: AuthedRequest, res: Response): Promise<any> {
+  return res.json({
+    success: true,
+    data: {
+      vapidPublicKey: getVapidPublicKey(),
+    },
+  });
+}
+
+export async function registerPushSubscription(req: AuthedRequest, res: Response): Promise<any> {
+  if (!req.user) return res.status(401).json({ success: false, message: "Unauthorized" });
+  const schema = z.object({
+    subscription: z.object({
+      endpoint: z.string().url(),
+      keys: z.object({
+        p256dh: z.string().min(1),
+        auth: z.string().min(1),
+      }),
+    }),
+  });
+  const input = schema.parse(req.body);
+  await savePushSubscription(req.user.id, input.subscription, req.headers["user-agent"] || null);
+  return res.status(201).json({ success: true });
+}
+
+export async function unregisterPushSubscription(req: AuthedRequest, res: Response): Promise<any> {
+  if (!req.user) return res.status(401).json({ success: false, message: "Unauthorized" });
+  const schema = z.object({ endpoint: z.string().url() });
+  const input = schema.parse(req.body);
+  await deletePushSubscription(req.user.id, input.endpoint);
+  return res.json({ success: true });
 }
 
 export async function markMyNotificationRead(req: AuthedRequest, res: Response): Promise<any> {

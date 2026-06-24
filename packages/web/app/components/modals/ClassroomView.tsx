@@ -34,6 +34,7 @@ type ClassroomViewProps = {
     name: string;
     role?: "STUDENT" | "TUTOR" | "ADMIN" | "GUEST";
   };
+  token?: string;
   logClientActivity?: (action: string, details: string) => void;
 };
 
@@ -64,7 +65,7 @@ function getClassroomId(activeClassroom: any) {
   return String(activeClassroom?.class_id || activeClassroom?.live_room_code || activeClassroom?.id || "preview-room");
 }
 
-export default function ClassroomView({ activeClassroom, setActiveClassroom, currentUser, logClientActivity }: ClassroomViewProps) {
+export default function ClassroomView({ activeClassroom, setActiveClassroom, currentUser, token, logClientActivity }: ClassroomViewProps) {
   const [sidePanel, setSidePanel] = useState<SidePanel>(null);
   const [roomView, setRoomView] = useState<RoomView>("gallery");
   const [chatInput, setChatInput] = useState("");
@@ -115,6 +116,7 @@ export default function ClassroomView({ activeClassroom, setActiveClassroom, cur
     userId: currentUser.id,
     userName: currentUser.name,
     role: currentUser.role || "GUEST",
+    token,
     autoJoin: Boolean(activeClassroom),
     initialMicOn: false,
     initialCamOn: false,

@@ -79,7 +79,7 @@ export default function ProfileTab({
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
                     <img
-                      src="https://api.dicebear.com/7.x/avataaars/svg?seed=HsTuan"
+                      src="/logo.jpg"
                       className="w-6 h-6 bg-white rounded-full"
                       alt=""
                     />
@@ -95,7 +95,7 @@ export default function ProfileTab({
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
                     <img
-                      src="https://api.dicebear.com/7.x/avataaars/svg?seed=HsMai"
+                      src="/logo.jpg"
                       className="w-6 h-6 bg-white rounded-full"
                       alt=""
                     />
@@ -216,7 +216,7 @@ export default function ProfileTab({
       ) : (
         <div className="bg-white dark:bg-slate-900 rounded-2xl shadow p-10 text-center animate-fade-in border border-slate-105 dark:border-slate-800 mt-10 max-w-md mx-auto">
           <img
-            src="https://i.ibb.co/NdgYx2Fy/Gemini-Generated-Image-89azsx89azsx89az.png"
+            src="/logo.jpg"
             alt="Logo"
             className="w-24 h-24 mx-auto rounded-3xl mb-6 shadow-md"
           />

@@ -2,10 +2,29 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { io, Socket } from "socket.io-client";
 import { SOCKET_BASE_URL } from "../utils/api";
 
+function parseTurnServers() {
+  const urls = (process.env.NEXT_PUBLIC_TURN_URLS || "")
+    .split(",")
+    .map((url) => url.trim())
+    .filter(Boolean);
+
+  if (urls.length === 0) return [];
+
+  const username = process.env.NEXT_PUBLIC_TURN_USERNAME || "";
+  const credential = process.env.NEXT_PUBLIC_TURN_CREDENTIAL || "";
+  return [
+    {
+      urls,
+      ...(username && credential ? { username, credential } : {}),
+    },
+  ];
+}
+
 const ICE_SERVERS: RTCConfiguration = {
   iceServers: [
     { urls: "stun:stun.l.google.com:19302" },
     { urls: "stun:stun1.l.google.com:19302" },
+    ...parseTurnServers(),
   ],
 };
 
@@ -55,6 +74,7 @@ export type UseWebRTCOptions = {
   userId: string;
   userName: string;
   role?: ClassroomRole;
+  token?: string;
   autoJoin?: boolean;
   initialMicOn?: boolean;
   initialCamOn?: boolean;
@@ -113,6 +133,7 @@ export function useWebRTC(
   const userId = options.userId;
   const userName = options.userName || "Khách";
   const role = options.role || "GUEST";
+  const token = options.token || "";
   const autoJoin = options.autoJoin ?? true;
 
   const [socket, setSocket] = useState<Socket | null>(null);
@@ -666,6 +687,7 @@ export function useWebRTC(
 
     setConnectionState("connecting");
     const nextSocket = io(getApiUrl(), {
+      auth: { token },
       withCredentials: true,
       transports: ["polling"],
       upgrade: false,
@@ -811,7 +833,7 @@ export function useWebRTC(
     });
 
     nextSocket.on("host-mute", () => {
-      setMediaError("Host da tat micro cua ban.");
+      setMediaError("Chủ phòng đã tắt micro của bạn.");
       void setMicrophoneEnabledRef.current(false);
     });
 
@@ -837,6 +859,7 @@ export function useWebRTC(
     autoJoin,
     roomId,
     role,
+    token,
     userId,
     userName,
   ]);

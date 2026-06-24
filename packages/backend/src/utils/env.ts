@@ -32,6 +32,10 @@ const EnvSchema = z.object({
   ZALO_BOT_TOKEN: z.string().optional(),
   ZALO_ADMIN_CHAT_IDS: z.string().optional(), // comma-separated chat ids
   ZALO_BOT_API_URL: z.string().default("https://bot-api.zaloplatforms.com"),
+
+  VAPID_PUBLIC_KEY: z.string().optional(),
+  VAPID_PRIVATE_KEY: z.string().optional(),
+  VAPID_SUBJECT: z.string().default("mailto:admin@kntech.site"),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

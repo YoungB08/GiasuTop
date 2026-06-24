@@ -245,6 +245,20 @@ CREATE TABLE IF NOT EXISTS notifications (
   INDEX (entity_type, entity_id)
 );
 
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  user_id VARCHAR(36) NOT NULL,
+  endpoint TEXT NOT NULL,
+  endpoint_hash CHAR(64) NOT NULL,
+  p256dh VARCHAR(255) NOT NULL,
+  auth VARCHAR(255) NOT NULL,
+  user_agent TEXT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uniq_push_endpoint_hash (endpoint_hash),
+  INDEX idx_push_user (user_id)
+);
+
 CREATE TABLE IF NOT EXISTS subjects (
   id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   name VARCHAR(120) NOT NULL UNIQUE,

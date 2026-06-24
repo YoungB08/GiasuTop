@@ -1,4 +1,4 @@
-const CACHE_NAME = "giasutop-app-shell-v2";
+const CACHE_NAME = "giasutop-app-shell-v3";
 const APP_SHELL = ["/", "/manifest.json", "/logo.jpg", "/mobile-install-guide.svg"];
 
 self.addEventListener("install", (event) => {
@@ -97,7 +97,7 @@ self.addEventListener("message", (event) => {
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const targetUrl = event.notification.data?.url || "/";
+  const targetUrl = new URL(event.notification.data?.url || "/", self.location.origin).href;
   event.waitUntil(
     clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
       for (const client of clientList) {

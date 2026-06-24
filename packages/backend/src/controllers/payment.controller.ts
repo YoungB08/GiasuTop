@@ -117,7 +117,7 @@ async function settleAppointmentsIntoEscrow(params: {
   if (params.requireUnpaid !== false) {
     const alreadyPaid = apptRows.find((appt: any) => appt.payment_status !== "UNPAID");
     if (alreadyPaid) {
-      throw new Error("Lich hoc nay da duoc thanh toan hoac dang cho xu ly.");
+      throw new Error("Lịch học này đã được thanh toán hoặc đang chờ xử lý.");
     }
   }
 

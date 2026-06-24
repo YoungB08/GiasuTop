@@ -52,6 +52,17 @@ function isStandaloneApp() {
   return window.matchMedia("(display-mode: standalone)").matches || Boolean((navigator as any).standalone);
 }
 
+function urlBase64ToUint8Array(base64String: string) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; i += 1) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
+
 type Tutor = {
   user_id: string;
   full_name: string;
@@ -345,7 +356,7 @@ export default function HomeScreen() {
   const getAvatarUrl = (u: any) => {
     if (!u) return "";
     const url = u.avatarUrl || u.avatar_url;
-    if (!url) return `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(u.email)}`;
+    if (!url) return "/logo.jpg";
     if (url.startsWith("/")) return apiUrl(`${url}`);
     return url;
   };
@@ -444,22 +455,51 @@ export default function HomeScreen() {
   const handleRegisterNotification = async () => {
     try {
       if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-        showKntechAlert("warning", "Không hỗ trợ", "Trình duyệt của bác không hỗ trợ nhận thông báo đẩy!");
+        showKntechAlert("warning", "Không hỗ trợ", "Trình duyệt của bạn không hỗ trợ nhận thông báo đẩy.");
+        return;
+      }
+      if (!token) {
+        showKntechAlert("warning", "Cần đăng nhập", "Vui lòng đăng nhập trước khi bật thông báo.");
         return;
       }
 
-      // Register service worker
       const registration = await navigator.serviceWorker.register('/service-worker.js');
-      console.log('Service Worker registered:', registration);
-
-      // Request Permission
       const permission = await Notification.requestPermission();
       if (permission !== 'granted') {
-        showKntechAlert("warning", "Bị từ chối", "Bác đã chặn quyền thông báo. Vui lòng bật lại trong cài đặt!");
+        showKntechAlert("warning", "Bị từ chối", "Bạn đã chặn quyền thông báo. Vui lòng bật lại trong cài đặt trình duyệt.");
         return;
       }
 
-      showKntechAlert("success", "Đăng ký thành công!", "🔔 Bác đã cho phép ứng dụng gửi thông báo đẩy!");
+      const configRes = await fetch(apiUrl("/api/notifications/push/config"), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const configJson = await configRes.json();
+      const vapidPublicKey = configJson.data?.vapidPublicKey;
+      if (!configJson.success || !vapidPublicKey) {
+        showKntechAlert("warning", "Chưa cấu hình push", "Máy chủ chưa có VAPID key. Thông báo trong app vẫn hoạt động khi ứng dụng đang mở.");
+        return;
+      }
+
+      let subscription = await registration.pushManager.getSubscription();
+      if (!subscription) {
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
+        });
+      }
+
+      const saveRes = await fetch(apiUrl("/api/notifications/push/subscribe"), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ subscription }),
+      });
+      if (!saveRes.ok) throw new Error("Không thể lưu thiết bị nhận thông báo.");
+
+      setNotificationPermission(Notification.permission);
+      showKntechAlert("success", "Đăng ký thành công!", "Ứng dụng đã bật thông báo cho thiết bị này.");
     } catch (error: any) {
       console.error(error);
       showKntechAlert("error", "Lỗi đăng ký", error.message || "Không thể đăng ký nhận thông báo.");
@@ -481,18 +521,17 @@ export default function HomeScreen() {
 
       const registration = await navigator.serviceWorker.ready;
 
-      // Send a simulated push event locally using registration.showNotification
       const options = {
-        body: '🛡️GiasuTopAnti-Scam vừa phát hiện và chặn một liên kết giả mạo độc hại hướng tới ví tài khoản của bạn. An toàn là trên hết!',
-        icon: 'https://api.dicebear.com/7.x/identicon/png?seed=KNTech',
-        badge: 'https://api.dicebear.com/7.x/identicon/png?seed=KNTech&width=96&height=96',
+        body: 'Đây là thông báo thử nghiệm từ GiaSuTop.',
+        icon: '/logo.jpg',
+        badge: '/logo.jpg',
         vibrate: [100, 50, 100],
         data: {
           url: '/'
         }
       };
 
-      await registration.showNotification('Cảnh báo bảo mật từ GiasuTop!', options);
+      await registration.showNotification('GiaSuTop', options);
     } catch (error: any) {
       console.error(error);
       showKntechAlert("error", "Lỗi giả lập", error.message || "Lỗi khi kích hoạt thông báo.");
@@ -2622,7 +2661,7 @@ export default function HomeScreen() {
       {showInstallPrompt && (
         <div className="fixed bottom-4 left-4 right-4 md:left-auto md:right-4 md:w-96 z-50 bg-white/95 dark:bg-slate-900/95 border border-slate-200/80 dark:border-slate-800/80 rounded-2xl shadow-2xl p-4 flex gap-3 animate-slide-up backdrop-blur-md">
           <div className="h-10 w-10 rounded-xl bg-[#13519c]/10 dark:bg-[#13519c]/25 flex items-center justify-center shrink-0">
-            <img src="https://i.ibb.co/NdgYx2Fy/Gemini-Generated-Image-89azsx89azsx89az.png" alt="Logo" className="h-8 w-8 rounded-lg object-cover" />
+            <img src="/logo.jpg" alt="Logo" className="h-8 w-8 rounded-lg object-cover" />
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-start justify-between">
@@ -2666,7 +2705,7 @@ export default function HomeScreen() {
             onClick={() => setActiveTab("home")}
             className="text-lg font-bold tracking-tight text-white flex items-center gap-2 cursor-pointer focus:outline-none"
           >
-            <img src="https://i.ibb.co/NdgYx2Fy/Gemini-Generated-Image-89azsx89azsx89az.png" alt="Logo" className="h-8 w-8 rounded-lg object-cover" />
+            <img src="/logo.jpg" alt="Logo" className="h-8 w-8 rounded-lg object-cover" />
             <span className="hidden sm:inline font-semibold">GiasuTop</span>
           </button>
 
@@ -4188,7 +4227,7 @@ export default function HomeScreen() {
                         <div className="bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 p-4 rounded-xl">
                           <div className="flex items-center justify-between mb-2">
                             <div className="flex items-center gap-2">
-                              <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=HsTuan" className="w-6 h-6 bg-white rounded-full" alt="" />
+                              <img src="/logo.jpg" className="w-6 h-6 bg-white rounded-full" alt="" />
                               <span className="font-bold text-sm dark:text-white">HS. Nguyễn Tuấn</span>
                             </div>
                             <span className="text-amber-500 text-xs tracking-widest">⭐⭐⭐⭐⭐</span>
@@ -4198,7 +4237,7 @@ export default function HomeScreen() {
                         <div className="bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 p-4 rounded-xl">
                           <div className="flex items-center justify-between mb-2">
                             <div className="flex items-center gap-2">
-                              <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=HsMai" className="w-6 h-6 bg-white rounded-full" alt="" />
+                              <img src="/logo.jpg" className="w-6 h-6 bg-white rounded-full" alt="" />
                               <span className="font-bold text-sm dark:text-white">HS. Phạm Mai</span>
                             </div>
                             <span className="text-amber-500 text-xs tracking-widest">⭐⭐⭐⭐⭐</span>
@@ -4422,7 +4461,7 @@ export default function HomeScreen() {
                     </div>
                   ) : (
                     <div className="bg-white dark:bg-slate-900 rounded-2xl shadow p-10 text-center animate-fade-in border border-slate-100 dark:border-slate-800 mt-10 max-w-md mx-auto">
-                      <img src="https://i.ibb.co/NdgYx2Fy/Gemini-Generated-Image-89azsx89azsx89az.png" alt="Logo" className="w-24 h-24 mx-auto rounded-3xl mb-6 shadow-md" />
+                      <img src="/logo.jpg" alt="Logo" className="w-24 h-24 mx-auto rounded-3xl mb-6 shadow-md" />
                       <h2 className="text-2xl font-bold mb-3 dark:text-white">Bạn chưa đăng nhập</h2>
                       <p className="text-sm text-slate-500 dark:text-slate-400 mb-8 leading-relaxed">Vui lòng đăng nhập hoặc tạo tài khoản mới để trải nghiệm đầy đủ các tính năng cá nhân hóa của GiasuTop.</p>
                       <button onClick={() => openAuth("login")} className="w-full bg-[#13519c] text-white px-8 py-3.5 rounded-xl font-bold hover:bg-blue-800 transition shadow-[0_8px_20px_rgba(19,81,156,0.3)]">
@@ -4515,6 +4554,7 @@ export default function HomeScreen() {
           name: user?.fullName || "Khách",
           role: (user?.role as "STUDENT" | "TUTOR" | "ADMIN" | "GUEST" | undefined) || "GUEST",
         }}
+        token={token || undefined}
         logClientActivity={logClientActivity}
       />
 
@@ -4893,7 +4933,7 @@ export default function HomeScreen() {
           <div className="relative w-64 max-w-[80%] bg-white h-full shadow-2xl flex flex-col overflow-y-auto animate-slide-in-right origin-left" style={{ animationDirection: "normal" }}>
             <div className="p-4 bg-gradient-to-r from-blue-600 to-[#13519c] text-white flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <img src="https://i.ibb.co/NdgYx2Fy/Gemini-Generated-Image-89azsx89azsx89az.png" alt="Logo" className="h-8 w-8 rounded-lg object-cover bg-white" />
+                <img src="/logo.jpg" alt="Logo" className="h-8 w-8 rounded-lg object-cover bg-white" />
                 <span className="font-bold">Menu</span>
               </div>
               <button onClick={() => setIsDrawerOpen(false)} className="text-white/80 hover:text-white">
